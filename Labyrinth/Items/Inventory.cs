@@ -18,7 +18,7 @@ namespace Labyrinth.Items
         /// Gets the type of the item in the room.
         /// </summary>
         /// <exception cref="InvalidOperationException">Thrown if the room has no item (check with <see cref="HasItem"/>).</exception>
-        public Type ItemType => (_item ?? throw new InvalidOperationException("No item in the room")).GetType();
+        public Type ItemType => _item?.GetType() ?? throw new InvalidOperationException("No item in the room");
 
         /// <summary>
         /// Places an item in the inventory, removing it from another one.
