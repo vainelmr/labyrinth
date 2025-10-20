@@ -1,4 +1,5 @@
 ﻿using Labyrinth.Crawl;
+using Labyrinth.Items;
 using Labyrinth.Tiles;
 
 namespace LabyrinthTest.Crawl;
@@ -133,25 +134,71 @@ public class LabyrinthCrawlerTest
     [Test]
     public void TurnLeftFacesWestTile()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +---+
+            |/xk|
+            +---+
+            """
+        );
+        test.Direction.TurnLeft();
+        AssertThat(test,
+            x: 2, y: 1,
+            Direction.West,
+            typeof(Door)
+        );
     }
-
     [Test]
     public void WalkReturnsInventoryAndChangesPositionAndFacingTile()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +/-+
+            |  |
+            |xk|
+            +--+
+            """
+        );
+        var inventory = test.Walk();
+
+        Assert.That(inventory.HasItem, Is.False);
+        AssertThat(test,
+            x: 1, y: 1,
+            Direction.North,
+            typeof(Door)
+        );
     }
 
     [Test]
     public void TurnAndWalkReturnsInventoryChangesPositionAndFacingTile()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +--+
+            |x |
+            +--+
+            """
+        );
+        test.Direction.TurnRight();
+
+        var inventory = test.Walk();
+
+        Assert.That(inventory.HasItem, Is.False);
+        AssertThat(test,
+            x: 2, y: 1,
+            Direction.East,
+            typeof(Wall)
+        );
     }
 
     [Test]
     public void WalkOnNonTraversableTileThrowsInvalidOperationException()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +--+
+            |/-+
+            |xk|
+            +--+
+            """
+        );
+        Assert.Throws<InvalidOperationException>(() => test.Walk());
     }
     #endregion
 
@@ -159,13 +206,38 @@ public class LabyrinthCrawlerTest
     [Test]
     public void WalkInARoomWithAnItem()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+        +---+
+        |  k|
+        |/ x|
+        +---+
+        """
+        );
+        var inventory = test.Walk();
+
+        using var all = Assert.EnterMultipleScope();
+
+        Assert.That(inventory.HasItem, Is.True);
+        Assert.That(inventory.ItemType, Is.EqualTo(typeof(Key)));
     }
 
     [Test]
     public void WalkUseAWrongKeyToOpenADoor()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +---+
+            |/ k|
+            |k  |
+            |x /|
+            +---+
+            """);
+        var inventory = test.Walk();
+        var door = (Door)test.FacingTile;
+
+        Assert.That(door.Open(inventory), Is.False);
+        Assert.That(door.IsLocked, Is.True);
+        Assert.That(door.IsTraversable, Is.False);
+        Assert.That(inventory.HasItem, Is.True);
     }
 
     [Test]
