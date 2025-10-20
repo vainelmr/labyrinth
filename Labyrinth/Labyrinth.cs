@@ -4,20 +4,24 @@ using System.Text;
 
 namespace Labyrinth
 {
-    public class Labyrinth
+    public partial class Labyrinth
     {
         /// <summary>
         /// Labyrinth with walls, doors and collectable items.
         /// </summary>
-        /// <param name="ascii_map">A multiline string with '+', '-' or '|' for walls, '/' for doors and 'k' for key locations</param>
-        /// <exception cref="ArgumentException">Thrown when string argument reveals inconsistent map sizes or characters.</exception>
+        /// <param name="ascii_map">A multiline string with '+', '-' or '|' for walls, '/' for doors, 'k' for key locations and x for starting position.</param>
+        /// <exception cref="ArgumentException">Thrown when string argument reveals inconsistent map sizes or characters with no starting position.</exception>
         /// <exception cref="NotSupportedException">Thrown for multiple doors (resp. key locations) before key locations (resp. doors).</exception>
         public Labyrinth(string ascii_map)
         {
-            _tiles = Build.AsciiParser.Parse(ascii_map);
+            _tiles = Build.AsciiParser.Parse(ascii_map, ref _start);
             if (_tiles.GetLength(0) < 3 || _tiles.GetLength(1) < 3)
             {
                 throw new ArgumentException("Labyrinth must be at least 3x3");
+            }
+            if (_start == (-1, -1))
+            {
+                throw new ArgumentException("Labyrinth must have at least one starting position marked with x");
             }
         }
 
@@ -56,7 +60,14 @@ namespace Labyrinth
             return res.ToString();
         }
 
-        public ICrawler NewCrawler() => throw new NotImplementedException("To be implemented");
+        /// <summary>
+        /// Instantiate a new crawler at the starting position.
+        /// </summary>
+        /// <returns>New crawler instance used to browse the labyrinth.</returns>
+        public ICrawler NewCrawler() =>
+            new LabyrinthCrawler(_start.X, _start.Y, _tiles);
+
+        private (int X, int Y) _start = (-1, -1);
 
         private readonly Tile[,] _tiles;
     }
