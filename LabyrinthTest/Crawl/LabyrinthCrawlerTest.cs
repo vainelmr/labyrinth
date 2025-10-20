@@ -63,27 +63,69 @@ public class LabyrinthCrawlerTest
 
     #region Labyrinth borders
     [Test]
-    public void FacingNorthOnUpperTileReturnsOutside()
-    {
-        Assert.That(false);
-    }
+    public void FacingNorthOnUpperTileReturnsOutside() =>
+         AssertThat(
+            NewCrawlerFor("""
+                +x+
+                | |
+                +-+
+                """
+            ),
+            x: 1, y: 0,
+            Direction.North,
+            typeof(Outside)
+        );
 
     [Test]
     public void FacingWestOnFarLeftTileReturnsOutside()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +-+
+            x |
+            +-+
+            """
+        );
+        test.Direction.TurnLeft();
+        AssertThat(test,
+            x: 0, y: 1,
+            Direction.West,
+            typeof(Outside)
+        );
     }
 
     [Test]
     public void FacingEastOnFarRightTileReturnsOutside()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +-+
+            | x
+            +-+
+            """
+        );
+        test.Direction.TurnRight();
+        AssertThat(test,
+            x: 2, y: 1,
+            Direction.East,
+            typeof(Outside)
+        );
     }
 
     [Test]
     public void FacingSouthOnBottomTileReturnsOutside()
     {
-        Assert.That(false);
+        var test = NewCrawlerFor("""
+            +-+
+            | |
+            +x+
+            """
+        );
+        test.Direction.TurnLeft();
+        test.Direction.TurnLeft();
+        AssertThat(test,
+            x: 1, y: 2,
+            Direction.South,
+            typeof(Outside)
+        );
     }
     #endregion
 
