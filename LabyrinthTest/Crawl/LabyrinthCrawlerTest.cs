@@ -189,7 +189,7 @@ public class LabyrinthCrawlerTest
     }
 
     [Test]
-    public void WalkOnNonTraversableTileThrowsInvalidOperationException()
+    public void WalkOnNonTraversableTileThrowsInvalidOperationExceptionAndDontMove()
     {
         var test = NewCrawlerFor("""
             +--+
@@ -199,6 +199,28 @@ public class LabyrinthCrawlerTest
             """
         );
         Assert.Throws<InvalidOperationException>(() => test.Walk());
+        AssertThat(test,
+            x: 1, y: 2,
+            Direction.North,
+            typeof(Door)
+        );
+    }
+
+    [Test]
+    public void WalkOutsideThrowsInvalidOperationExceptionAndDontMove()
+    {
+        var test = NewCrawlerFor("""
+            |x|
+            | |
+            +-+
+            """
+        );
+        Assert.Throws<InvalidOperationException>(() => test.Walk());
+        AssertThat(test,
+            x: 1, y: 0,
+            Direction.North,
+            typeof(Outside)
+        );
     }
     #endregion
 

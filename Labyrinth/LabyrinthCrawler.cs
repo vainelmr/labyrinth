@@ -12,22 +12,36 @@ namespace Labyrinth
 
             public int Y => _y;
 
-            public Tile FacingTile =>
-                IsOut(_x + _direction.DeltaX, dimension: 0) ||
-                IsOut(_y + _direction.DeltaY, dimension: 1)
-                    ? Outside.Singleton
-                    : _tiles[ _x + _direction.DeltaX, 
-                              _y + _direction.DeltaY ];
+            public Tile FacingTile => ProcessFacingTile((x, y, tile) => tile);
 
             Direction ICrawler.Direction => _direction;
 
-            public Inventory Walk() => _tiles[
-                _x += _direction.DeltaX,
-                _y += _direction.DeltaY
-            ].Pass();
+            public Inventory Walk() => 
+                ProcessFacingTile((facingX, facingY, tile) => 
+                {
+                    var inventory = tile.Pass();
+
+                    _x = facingX;
+                    _y = facingY;
+                    return inventory;
+                });
 
             private bool IsOut(int pos, int dimension) =>
                 pos < 0 || pos >= _tiles.GetLength(dimension);
+
+            private T ProcessFacingTile<T>(Func<int, int, Tile, T> process)
+            {
+                int facingX = _x + _direction.DeltaX,
+                    facingY = _y + _direction.DeltaY;
+
+                return process(
+                    facingX, facingY,
+                    IsOut(facingX, dimension: 0) ||
+                    IsOut(facingY, dimension: 1)
+                        ? Outside.Singleton
+                        : _tiles[facingX, facingY]
+                 );
+            }
 
             private int _x = x;
             private int _y = y;
