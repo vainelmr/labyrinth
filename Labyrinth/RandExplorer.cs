@@ -23,22 +23,32 @@ namespace Labyrinth
 
             for( ; n > 0 && _crawler.FacingTile is not Outside; n--)
             {
-                if(_crawler.FacingTile.IsTraversable 
+                EventHandler<CrawlingEventArgs>? changeEvent;
+
+                if (_crawler.FacingTile.IsTraversable
                     && _rnd.Next() == Actions.Walk)
                 {
                     _crawler.Walk().SwapItems(bag);
+                    changeEvent = PositionChanged;
                 }
                 else
                 {
                     _crawler.Direction.TurnLeft();
+                    changeEvent = DirectionChanged;
                 }
                 if (_crawler.FacingTile is Door door && door.IsLocked
                     && bag.HasItem && bag.ItemType == typeof(Key))
                 {
                     door.Open(bag);
                 }
+                changeEvent?.Invoke(this, new CrawlingEventArgs(_crawler));
             }
             return n;
         }
+
+        public event EventHandler<CrawlingEventArgs>? PositionChanged;
+
+        public event EventHandler<CrawlingEventArgs>? DirectionChanged;
     }
+
 }
