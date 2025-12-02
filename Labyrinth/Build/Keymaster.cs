@@ -14,7 +14,7 @@ namespace Labyrinth.Build
         /// <exception cref="InvalidOperationException">Some keys are missing or are not placed.</exception>
         public void Dispose()
         {
-            if (unplacedKey.HasItems || emptyKeyRoom is not null)
+            if (unplacedKeys.HasItems || emptyKeyRooms.Count > 0)
             {
                 throw new InvalidOperationException("Unmatched key/door creation");
             }
@@ -27,13 +27,9 @@ namespace Labyrinth.Build
         /// <exception cref="NotSupportedException">Multiple doors before key placement</exception>
         public Door NewDoor()
         {
-            if (unplacedKey.HasItems)
-            {
-                throw new NotSupportedException("Unable to handle multiple doors before key placement");
-            }
             var door = new Door();
 
-            door.LockAndTakeKey(unplacedKey);
+            door.LockAndTakeKey(unplacedKeys);
             PlaceKey();
             return door;
         }
@@ -45,25 +41,22 @@ namespace Labyrinth.Build
         /// <exception cref="NotSupportedException">Multiple keyss before key placement</exception>
         public Room NewKeyRoom()
         {
-            if (emptyKeyRoom is not null)
-            {
-                throw new NotSupportedException("Unable to handle multiple keys before door creation");
-            }
-            var room = emptyKeyRoom = new Room();
+            var room = new Room();
+
+            emptyKeyRooms.Push(room);
             PlaceKey();
             return room;
         }
 
         private void PlaceKey()
         {
-            if (unplacedKey.HasItems && emptyKeyRoom is not null)
+            if (unplacedKeys.HasItems && emptyKeyRooms.Count > 0)
             {
-                emptyKeyRoom.Pass().MoveItemFrom(unplacedKey);
-                emptyKeyRoom = null;
+                emptyKeyRooms.Pop().Pass().MoveItemFrom(unplacedKeys);
             }
         }
 
-        private readonly MyInventory unplacedKey = new();
-        private Room? emptyKeyRoom = null;
+        private readonly MyInventory unplacedKeys = new();
+        private Stack<Room> emptyKeyRooms = new();
     }
 }
