@@ -8,7 +8,7 @@ namespace Labyrinth.Tiles
     public class Door : Tile
     {
         public Door() : base(new Key()) =>
-            _key = (Key)LocalInventory.Item!;
+            _key = (Key)LocalInventory.Items.First();
 
         public override bool IsTraversable => IsOpened;
 
@@ -20,7 +20,7 @@ namespace Labyrinth.Tiles
         /// <summary>
         /// True if the door is locked, false if unlocked and opened.
         /// </summary>
-        public bool IsLocked => !LocalInventory.HasItem; // A key in the door
+        public bool IsLocked => !LocalInventory.HasItems; // A key in the door
 
         /// <summary>
         /// Opens the door with the provided key.
@@ -36,7 +36,7 @@ namespace Labyrinth.Tiles
                 throw new InvalidOperationException("Door is already unlocked.");
             }
             LocalInventory.MoveItemFrom(keySource);
-            if (LocalInventory.Item != _key)
+            if (LocalInventory.Items.First() != _key)
             {
                 keySource.MoveItemFrom(LocalInventory);
             }

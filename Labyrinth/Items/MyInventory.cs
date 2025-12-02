@@ -7,8 +7,8 @@
     public class MyInventory(ICollectable? item = null) : Inventory(item)
     {
         /// <summary>
-        /// Item in the inventory, or null if empty.
+        /// Items in the inventory.
         /// </summary>
-        public ICollectable? Item => _item;
+        public IEnumerable<ICollectable> Items => _items;
     }
 }
