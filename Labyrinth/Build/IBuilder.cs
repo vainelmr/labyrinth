@@ -5,7 +5,7 @@ namespace Labyrinth.Build
 {
     public interface IBuilder
     {
-        Tile[,] Build(LocalInventory? unplacedItems = null);
+        Tile[,] Build();
 
         event EventHandler<StartEventArgs>? StartPositionFound;
     }

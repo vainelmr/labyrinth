@@ -1,4 +1,5 @@
-﻿using Labyrinth.Crawl;
+﻿using Labyrinth.Build;
+using Labyrinth.Crawl;
 using Labyrinth.Items;
 using Labyrinth.Tiles;
 
@@ -7,10 +8,11 @@ namespace LabyrinthTest.Crawl;
 [TestFixture(Description = "Integration test for the crawler implementation in the labyrinth")]
 public class LabyrinthCrawlerTest
 {
-    private static ICrawler 
-        
-        NewCrawlerFor(string ascii_map) =>
-        new Labyrinth.Labyrinth(ascii_map).NewCrawler();
+    private static Labyrinth.Labyrinth NewLabyrinth(string ascii_map) =>
+        new Labyrinth.Labyrinth(new AsciiParser(ascii_map));
+
+    private static ICrawler NewCrawlerFor(string ascii_map) =>
+        NewLabyrinth(ascii_map).NewCrawler();
 
     private static void AssertThat(ICrawler test, int x, int y, Direction dir, Type facingTile)
     {
@@ -55,7 +57,7 @@ public class LabyrinthCrawlerTest
     [Test]
     public void InitWithNoXThrowsArgumentException() =>
         Assert.Throws<ArgumentException>(() =>
-            new Labyrinth.Labyrinth("""
+            NewLabyrinth("""
                 +--+
                 |  |
                 +--+
@@ -272,7 +274,7 @@ public class LabyrinthCrawlerTest
     [Test]
     public async Task WalkUseKeyToOpenADoorAndPass()
     {
-        var laby = new Labyrinth.Labyrinth("""
+        var laby = NewLabyrinth("""
                 +--+
                 |xk|
                 +-/|

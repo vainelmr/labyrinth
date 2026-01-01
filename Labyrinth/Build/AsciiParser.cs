@@ -1,10 +1,11 @@
-﻿using Labyrinth.Tiles;
+﻿using Labyrinth.Items;
+using Labyrinth.Tiles;
 
 namespace Labyrinth.Build
 {
-    public class AsciiParser
+    public class AsciiParser(string ascii_map) : IBuilder
     {
-        public Tile[,] Parse(string ascii_map)
+        public Tile[,] Build()
         {
             var lines = ascii_map.Split("\n,\r\n".Split(','), StringSplitOptions.None);
             var width = lines[0].Length;

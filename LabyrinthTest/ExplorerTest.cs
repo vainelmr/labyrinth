@@ -1,4 +1,5 @@
 ﻿using Labyrinth;
+using Labyrinth.Build;
 using Labyrinth.Crawl;
 using Labyrinth.Sys;
 using Moq;
@@ -33,7 +34,7 @@ public class ExplorerTest
         out ExplorerEventsCatcher events,
         params Actions[] actions
     ) {
-        var laby = new Labyrinth.Labyrinth(labyrinth);
+        var laby = new Labyrinth.Labyrinth(new AsciiParser(labyrinth));
         var mockRnd = new Mock<IEnumRandomizer<Actions>>();
 
         mockRnd.Setup(r => r.Next()).Returns(
