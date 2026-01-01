@@ -43,4 +43,4 @@ explorer.PositionChanged  += (s, e) =>
 
 Console.Clear();
 Console.WriteLine(labyrinth);
-explorer.GetOut(1000);
+explorer.GetOut(1000).Wait();

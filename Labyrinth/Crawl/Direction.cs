@@ -8,7 +8,7 @@
     /// <see cref="South"/> and 
     /// <see cref="West"/>.
     /// </summary>
-    public class Direction
+    public class Direction : ICloneable
     {
         public static Direction North => new(0, -1);
         public static Direction East => new(1, 0);
@@ -54,6 +54,8 @@
 
         public override int GetHashCode() =>
             HashCode.Combine(DeltaX, DeltaY);
+
+        public object Clone() => new Direction(DeltaX, DeltaY);
 
         public static bool operator ==(Direction left, Direction right) =>
             left.Equals(right);

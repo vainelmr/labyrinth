@@ -6,7 +6,7 @@
     /// <param name="item">Optional initial item in the inventory.</param>
     public abstract class Inventory
     {
-        protected Inventory(ICollectable? item = null) 
+        protected Inventory(ICollectable? item = null)
         {
             if(item is not null)
             {
@@ -25,20 +25,21 @@
         public IEnumerable<Type> ItemTypes => _items.Select(item => item.GetType());
 
         /// <summary>
-        /// Places an item in the inventory, removing it from another one.
+        /// Attempts to move selected items from the specified source inventory to the current inventory.
         /// </summary>
-        /// <param name="from">The inventory from which the item is taken. The item is removed from this inventory.</param>
-        /// <exception cref="InvalidOperationException">Thrown if the room already contains an item (check with <see cref="HasItem"/>).</exception>
-        public void MoveItemFrom(Inventory from, int nth = 0)
-        {
-            if (!from.HasItems)
-            {
-                throw new InvalidOperationException("No item to take from the source inventory");
-            }
-            _items.Add(from._items[nth]);
-            from._items.RemoveAt(nth);
-        }
+        /// <remarks>The method does not modify items in the source inventory that are not selected. The
+        /// operation may fail if the current inventory cannot accept the selected items due to capacity or other
+        /// constraints.</remarks>
+        /// <param name="source">The inventory from which items will be moved. Cannot be null.</param>
+        /// <param name="movesRequired">A list of Boolean values indicating which items in the source inventory to move. Each element corresponds to
+        /// an item; <see langword="true"/> selects the item for moving, <see langword="false"/> leaves it in the
+        /// source.</param>
+        /// <returns>true if all selected items were successfully moved; otherwise, false.</returns>
+        public abstract Task<bool> TryMoveItemsFrom(
+            Inventory source, 
+            IList<bool> movesRequired
+        );
 
-        protected IList<ICollectable> _items = new List<ICollectable>();
+        protected List<ICollectable> _items = new ();
     }
 }

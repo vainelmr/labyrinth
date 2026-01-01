@@ -12,19 +12,43 @@ namespace Labyrinth
 
             public int Y => _y;
 
-            public Tile FacingTile => ProcessFacingTile((x, y, tile) => tile);
+            public Task<Type> FacingTileType => Task.FromResult(ProcessFacingTile((x, y, tile) => tile.GetType()));
 
             Direction ICrawler.Direction => _direction;
 
-            public Inventory Walk() => 
-                ProcessFacingTile((facingX, facingY, tile) => 
+            public Task<Inventory?> TryWalk(Inventory walkerInventory) => 
+                ProcessFacingTile((facingX, facingY, tile) =>
                 {
-                    var inventory = tile.Pass();
+                    Inventory? tileContent = null;
 
-                    _x = facingX;
-                    _y = facingY;
-                    return inventory;
+                    if (tile is Door door)
+                    {
+                        Open(door, walkerInventory);
+                    }
+                    if (tile.IsTraversable)
+                    {
+                        tileContent = tile.Pass();
+                        _x = facingX;
+                        _y = facingY;
+                    }
+                    return Task.FromResult(tileContent);
                 });
+            
+            private bool Open(Door door, Inventory walkerInventory)
+            {
+                if (walkerInventory is not LocalInventory keyRing)
+                {
+                    throw new NotSupportedException("Local inventories only");
+                }
+                for(var maxKeys = walkerInventory.ItemTypes.Count(); maxKeys > 0; maxKeys--)
+                {
+                    if (door.Open(keyRing))
+                    {
+                        return true;
+                    }
+                }
+                return false;
+            }
 
             private bool IsOut(int pos, int dimension) =>
                 pos < 0 || pos >= _tiles.GetLength(dimension);

@@ -33,7 +33,7 @@ namespace Labyrinth.Build
             }
             return tiles;
         }
-        public EventHandler<StartEventArgs>? StartPositionFound;
+        public event EventHandler<StartEventArgs>? StartPositionFound;
 
         private Room NewStartPos(int x, int y)
         {

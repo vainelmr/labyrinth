@@ -16,35 +16,31 @@ namespace Labyrinth
             Walk
         }
 
-        public int GetOut(int n)
+        public ICrawler Crawler => _crawler;
+
+        public async Task<int> GetOut(int n, Inventory? bag = null)
         {
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(n, 0, "n must be strictly positive");
-            MyInventory bag = new ();
 
-            for( ; n > 0 && _crawler.FacingTile is not Outside; n--)
+            bag ??= new MyInventory();
+            for( ; n > 0 && await _crawler.FacingTileType != typeof(Outside); n--)
             {
                 EventHandler<CrawlingEventArgs>? changeEvent;
 
-                if (_crawler.FacingTile.IsTraversable
-                    && _rnd.Next() == Actions.Walk)
+                if ((await _crawler.FacingTileType) != typeof(Wall)
+                    && _rnd.Next() == Actions.Walk
+                    && await _crawler.TryWalk(bag) is Inventory roomContent)
                 {
-                    var roomContent = _crawler.Walk();
-
-                    while(roomContent.HasItems)
-                    {
-                        bag.MoveItemFrom(roomContent);
-                    }
+                    await bag.TryMoveItemsFrom(
+                        roomContent, 
+                        roomContent.ItemTypes.Select(_ => true).ToList()
+                    );
                     changeEvent = PositionChanged;
                 }
                 else
                 {
                     _crawler.Direction.TurnLeft();
                     changeEvent = DirectionChanged;
-                }
-                if (_crawler.FacingTile is Door door && door.IsLocked)
-                {
-                    while(bag.HasItems && !door.Open(bag))
-                        ;
                 }
                 changeEvent?.Invoke(this, new CrawlingEventArgs(_crawler));
             }

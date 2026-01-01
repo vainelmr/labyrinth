@@ -17,7 +17,7 @@ namespace Labyrinth.Tiles
         /// </summary>
         /// <exception cref="InvalidOperationException">The tile is not traversable.</exception>
         /// <see cref="IsTraversable"/>
-        public Inventory Pass()
+        public LocalInventory Pass()
         {
             if (!IsTraversable)
             {
