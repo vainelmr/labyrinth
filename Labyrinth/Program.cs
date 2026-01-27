@@ -5,7 +5,7 @@ using Labyrinth.Crawl;
 using Labyrinth.Items;
 using Labyrinth.Tiles;
 using Labyrinth.Sys;
-using Dto=ApiTypes;
+using Dto = ApiTypes;
 using System.Text.Json;
 
 const int OffsetY = 2;
@@ -15,31 +15,42 @@ char DirToChar(Direction dir) =>
 
 var TileToChar = new Dictionary<Type, char>
 {
-    [typeof(Room   )] = ' ',
-    [typeof(Wall   )] = '#',
-    [typeof(Door   )] = '/'
+    [typeof(Room)] = ' ',
+    [typeof(Wall)] = '#',
+    [typeof(Door)] = '/'
 };
 
 void DrawExplorer(object? sender, CrawlingEventArgs e)
 {
-    var crawler = ((RandExplorer)sender!).Crawler;
-    var facingTileType = crawler.FacingTileType.Result;
+    var explorer = (RandExplorer)sender!;
+    var crawler = explorer.Crawler;
+
+    // ✅ jamais de .Result : on lit la dernière valeur connue
+    var facingTileType = explorer.LastFacingTileType ?? typeof(Outside);
 
     if (facingTileType != typeof(Outside))
     {
         Console.SetCursorPosition(
-            e.X + e.Direction.DeltaX, 
+            e.X + e.Direction.DeltaX,
             e.Y + e.Direction.DeltaY + OffsetY
         );
-        Console.Write(TileToChar[facingTileType]);
+
+        // ✅ anti-crash si un type inconnu apparaît
+        if (TileToChar.TryGetValue(facingTileType, out var tileChar))
+            Console.Write(tileChar);
+        else
+            Console.Write('?');
     }
+
     Console.SetCursorPosition(e.X, e.Y + OffsetY);
     Console.Write(DirToChar(e.Direction));
+
     Console.SetCursorPosition(0, 0);
-    if(crawler is ClientCrawler cc)
+    if (crawler is ClientCrawler cc)
     {
-        Console.WriteLine($"Bag : { cc.Bag.ItemTypes.Count() } item(s)");
+        Console.WriteLine($"Bag : {cc.Bag.ItemTypes.Count()} item(s)");
     }
+
     Thread.Sleep(100);
 }
 
@@ -53,17 +64,23 @@ if (args.Length < 2)
     Console.WriteLine(
         "Commande line usage : https://apiserver.example appKeyGuid [settings.json]"
     );
+
     labyrinth = new Labyrinth.Labyrinth(new AsciiParser("""
-        +--+--------+
-        |  /        |
-        |  +--+--+  |
-        |     |k    |
-        +--+  |  +--+
-           |k  x    |
-        +  +-------/|
-        |           |
-        +-----------+
-        """));
++---------------+
+|      /        |
+| +-----------+ |
+| |  /        | |
+| | +-------+ | |
+| | | x   k | | |
+| | | +---+ | | |
+| | | |   | | | |
+| | +-------+ | |
+| |        /  | |
+| +-----------+ |
+|      k   k    |
++---------------+
+"""));
+
     crawler = labyrinth.NewCrawler();
 }
 else
@@ -74,32 +91,42 @@ else
     {
         settings = JsonSerializer.Deserialize<Dto.Settings>(File.ReadAllText(args[2]));
     }
+
     contest = await ContestSession.Open(new Uri(args[0]), Guid.Parse(args[1]), settings);
-    labyrinth = new (contest.Builder);
+    labyrinth = new(contest.Builder);
     crawler = await contest.NewCrawler();
     bag = contest.Bags.First();
 }
 
 var prevX = crawler.X;
 var prevY = crawler.Y;
-var explorer = new RandExplorer(
-    crawler, 
+
+var explorerInstance = new RandExplorer(
+    crawler,
     new BasicEnumRandomizer<RandExplorer.Actions>()
 );
 
-explorer.DirectionChanged += DrawExplorer;
-explorer.PositionChanged  += (s, e) =>
+explorerInstance.DirectionChanged += DrawExplorer;
+explorerInstance.PositionChanged += (s, e) =>
 {
     Console.SetCursorPosition(prevX, prevY);
     Console.Write(' ');
+
     DrawExplorer(s, e);
+
     (prevX, prevY) = (e.X, e.Y + OffsetY);
 };
 
 Console.Clear();
 Console.SetCursorPosition(0, OffsetY);
 Console.WriteLine(labyrinth);
-await explorer.GetOut(3000, bag);
+
+Console.SetCursorPosition(0, 0);
+Console.WriteLine("DEBUG: starting exploration...");
+Console.WriteLine($"DEBUG: start pos = ({crawler.X},{crawler.Y})");
+
+
+await explorerInstance.GetOut(3000, bag);
 
 if (contest is not null)
 {
