@@ -1,4 +1,4 @@
-﻿using Labyrinth;
+using Labyrinth;
 using Labyrinth.ApiClient;
 using Labyrinth.Build;
 using Labyrinth.Crawl;
@@ -20,15 +20,14 @@ var TileToChar = new Dictionary<Type, char>
     [typeof(Door   )] = '/'
 };
 
-void DrawExplorer(object? sender, CrawlingEventArgs e)
+async void DrawExplorer(object? sender, CrawlingEventArgs e)
 {
     var crawler = ((RandExplorer)sender!).Crawler;
-    var facingTileType = crawler.FacingTileType.Result;
-
-    if (facingTileType != typeof(Outside))
+    if (!await crawler.IsFacingExitAsync())
     {
+        var facingTileType = await crawler.GetFrontTileTypeAsync();
         Console.SetCursorPosition(
-            e.X + e.Direction.DeltaX, 
+            e.X + e.Direction.DeltaX,
             e.Y + e.Direction.DeltaY + OffsetY
         );
         Console.Write(TileToChar[facingTileType]);
@@ -36,9 +35,10 @@ void DrawExplorer(object? sender, CrawlingEventArgs e)
     Console.SetCursorPosition(e.X, e.Y + OffsetY);
     Console.Write(DirToChar(e.Direction));
     Console.SetCursorPosition(0, 0);
-    if(crawler is ClientCrawler cc)
+    if (crawler is ClientCrawler cc)
     {
-        Console.WriteLine($"Bag : { cc.Bag.ItemTypes.Count() } item(s)");
+        var count = (await cc.Bag.GetItemTypesAsync()).Count;
+        Console.WriteLine($"Bag : { count } item(s)");
     }
     Thread.Sleep(100);
 }
