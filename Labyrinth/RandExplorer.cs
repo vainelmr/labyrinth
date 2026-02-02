@@ -1,7 +1,6 @@
-﻿using Labyrinth.Crawl;
+using Labyrinth.Crawl;
 using Labyrinth.Items;
 using Labyrinth.Sys;
-using Labyrinth.Tiles;
 
 namespace Labyrinth
 {
@@ -23,26 +22,31 @@ namespace Labyrinth
             ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(n, 0, "n must be strictly positive");
 
             bag ??= new MyInventory();
-            for( ; n > 0 && await _crawler.FacingTileType != typeof(Outside); n--)
+            while (n > 0 && !await _crawler.IsFacingExitAsync())
             {
-                EventHandler<CrawlingEventArgs>? changeEvent;
+                var action = _rnd.Next();
 
-                if ((await _crawler.FacingTileType) != typeof(Wall)
-                    && _rnd.Next() == Actions.Walk
-                    && await _crawler.TryWalk(bag) is Inventory roomContent)
+                if (action == Actions.Walk)
                 {
-                    await bag.TryMoveItemsFrom(
-                        roomContent, 
-                        roomContent.ItemTypes.Select(_ => true).ToList()
-                    );
-                    changeEvent = PositionChanged;
+                    var moveResult = await _crawler.TryMoveAsync(bag);
+                    if (moveResult is MoveResult.Success success && success.TileInventory is { } roomContent)
+                    {
+                        var which = (await roomContent.GetItemTypesAsync()).Select(_ => true).ToList();
+                        await bag.TryMoveItemsFrom(roomContent, which);
+                        PositionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
+                    }
+                    else
+                    {
+                        _crawler.Direction.TurnLeft();
+                        DirectionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
+                    }
                 }
                 else
                 {
                     _crawler.Direction.TurnLeft();
-                    changeEvent = DirectionChanged;
+                    DirectionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
                 }
-                changeEvent?.Invoke(this, new CrawlingEventArgs(_crawler));
+                n--;
             }
             return n;
         }
