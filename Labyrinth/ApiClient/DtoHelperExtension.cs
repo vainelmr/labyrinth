@@ -1,4 +1,4 @@
-﻿using Labyrinth.Crawl;
+using Labyrinth.Crawl;
 using Labyrinth.Items;
 using Labyrinth.Tiles;
 using Dto = ApiTypes;
@@ -10,11 +10,11 @@ namespace Labyrinth.ApiClient
         public static Dto.Direction GetApiDirection(this Direction dir) =>
                 (Dto.Direction)(dir.DeltaY + 1 + dir.DeltaX * (dir.DeltaX - 1));
 
-        public static Dto.InventoryItem[] GetApiInventoryItems(this Inventory content) =>
-            [.. content.ItemTypes.Select(type => new Dto.InventoryItem
-            {
-                Type = Dto.ItemType.Key
-            })];
+        public static async Task<Dto.InventoryItem[]> GetApiInventoryItemsAsync(this Inventory content)
+        {
+            var types = await content.GetItemTypesAsync();
+            return [.. types.Select(_ => new Dto.InventoryItem { Type = Dto.ItemType.Key })];
+        }
 
         public static Dto.TileType GetApiTileType(this Type tileType) =>
             _tileTypeMap[tileType];
