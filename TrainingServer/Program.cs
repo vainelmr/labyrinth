@@ -1,5 +1,14 @@
 var builder = WebApplication.CreateBuilder(args);
 
+builder.Services.AddCors(options =>
+{
+    options.AddDefaultPolicy(policy =>
+        policy.AllowAnyOrigin()
+              .AllowAnyHeader()
+              .AllowAnyMethod());
+});
+
+
 builder.Services.AddSingleton<TrainingServer.Services.MazeRepository>();
 builder.Services.AddSingleton<TrainingServer.Services.CrawlerManager>();
 
@@ -9,26 +18,26 @@ builder.Services.AddSwaggerGen();
 
 var app = builder.Build();
 
+app.UseCors();
+
+
 app.UseSwagger();
 app.UseSwaggerUI();
 
 app.MapGet("/", () => "Hello World!");
 
 //Ajouter POST /crawlers
-app.MapPost("/crawlers", (HttpRequest req, TrainingServer.Services.CrawlerManager mgr) =>
+app.MapPost("/crawlers", (Guid appKey, TrainingServer.Services.CrawlerManager mgr) =>
 {
-    if (!req.Query.ContainsKey("appKey"))
-        return Results.BadRequest("Missing appKey");
-
+    // appKey est maintenant un vrai paramètre swagger (query)
     var (id, crawler, bag) = mgr.Create();
 
-    // On renvoie un Dto.Crawler (ce que ton client attend au POST)
     var dto = new ApiTypes.Crawler
     {
         Id = id,
         X = crawler.X,
         Y = crawler.Y,
-        Dir = ApiTypes.Direction.North, // valeur par défaut (sera corrigée au PATCH)
+        Dir = ApiTypes.Direction.North,
         Walking = false,
         FacingTile = ApiTypes.TileType.Room,
         Bag = Array.Empty<ApiTypes.InventoryItem>(),
@@ -37,6 +46,7 @@ app.MapPost("/crawlers", (HttpRequest req, TrainingServer.Services.CrawlerManage
 
     return Results.Ok(dto);
 });
+
 
 
 app.Run();
