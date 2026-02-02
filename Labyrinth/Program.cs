@@ -77,7 +77,7 @@ if (args.Length < 2)
 | | +-------+ | |
 | |        /  | |
 | +-----------+ |
-|      k   k    |
+|      k        |
 +---------------+
 """));
 
@@ -120,11 +120,6 @@ explorerInstance.PositionChanged += (s, e) =>
 Console.Clear();
 Console.SetCursorPosition(0, OffsetY);
 Console.WriteLine(labyrinth);
-
-Console.SetCursorPosition(0, 0);
-Console.WriteLine("DEBUG: starting exploration...");
-Console.WriteLine($"DEBUG: start pos = ({crawler.X},{crawler.Y})");
-
 
 await explorerInstance.GetOut(3000, bag);
 
