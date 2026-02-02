@@ -1,5 +1,6 @@
-﻿using Labyrinth.Build;
+using Labyrinth.Build;
 using Labyrinth.Crawl;
+using Labyrinth.Items;
 using Labyrinth.Tiles;
 using System.Text;
 
@@ -63,15 +64,74 @@ namespace Labyrinth
             return res.ToString();
         }
 
-        /// <summary>
-        /// Instantiate a new crawler at the starting position.
-        /// </summary>
-        /// <returns>New crawler instance used to browse the labyrinth.</returns>
-        public ICrawler NewCrawler() =>
-            new LabyrinthCrawler(_start.X, _start.Y, _tiles);
+
+        public ICrawler NewCrawler()
+        {
+            var id = _crawlerNextId++;
+            _crawlerPositions[id] = (_start.X, _start.Y);
+            return new LabyrinthCrawler(this, id);
+        }
+
+        /// <summary>Serveur : retourne uniquement le TYPE de la case devant le crawler.</summary>
+        internal Task<Type> GetFrontTileTypeAsync(int crawlerId, Direction direction)
+        {
+            var (x, y) = _crawlerPositions[crawlerId];
+            var tile = GetFacingTile(x, y, direction);
+            return Task.FromResult(tile.GetType());
+        }
+
+        /// <summary>Serveur : indique si la case devant le crawler est la sortie (outside).</summary>
+        internal Task<bool> IsFacingExitAsync(int crawlerId, Direction direction)
+        {
+            var (x, y) = _crawlerPositions[crawlerId];
+            var tile = GetFacingTile(x, y, direction);
+            return Task.FromResult(tile is Outside);
+        }
+
+        /// <summary>Serveur : tente de déplacer le crawler. Valide à partir de l'inventaire fourni (ex. clé pour porte).</summary>
+        internal async Task<MoveResult> TryMoveAsync(int crawlerId, Direction direction, Inventory inventory)
+        {
+            var (x, y) = _crawlerPositions[crawlerId];
+            int facingX = x + direction.DeltaX, facingY = y + direction.DeltaY;
+            var tile = GetFacingTile(x, y, direction);
+
+            if (tile is Wall or Outside)
+                return new MoveResult.Failure();
+
+            if (tile is Door door)
+            {
+                if (inventory is not LocalInventory keyRing)
+                    return new MoveResult.Failure();
+                var keyCount = (await inventory.GetItemTypesAsync()).Count;
+                var opened = false;
+                for (var k = keyCount; k > 0 && !opened; k--)
+                    opened = door.Open(keyRing);
+                if (!opened)
+                    return new MoveResult.Failure();
+            }
+
+            if (tile.IsTraversable)
+            {
+                _crawlerPositions[crawlerId] = (facingX, facingY);
+                return new MoveResult.Success(tile.Pass());
+            }
+            return new MoveResult.Failure();
+        }
+
+        internal int GetCrawlerX(int crawlerId) => _crawlerPositions[crawlerId].X;
+        internal int GetCrawlerY(int crawlerId) => _crawlerPositions[crawlerId].Y;
+
+        private Tile GetFacingTile(int x, int y, Direction direction)
+        {
+            int fx = x + direction.DeltaX, fy = y + direction.DeltaY;
+            if (fx < 0 || fx >= _tiles.GetLength(0) || fy < 0 || fy >= _tiles.GetLength(1))
+                return Outside.Singleton;
+            return _tiles[fx, fy];
+        }
 
         private (int X, int Y) _start = (-1, -1);
-
         private readonly Tile[,] _tiles;
+        private readonly Dictionary<int, (int X, int Y)> _crawlerPositions = new();
+        private int _crawlerNextId;
     }
 }
