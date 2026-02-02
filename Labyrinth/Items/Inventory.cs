@@ -1,4 +1,4 @@
-﻿namespace Labyrinth.Items
+namespace Labyrinth.Items
 {
     /// <summary>
     /// Inventory of collectable items for rooms and players.
@@ -19,10 +19,8 @@
         /// </summary>
         public bool HasItems => _items.Count>0;
 
-        /// <summary>
-        /// Gets the type of the item in the room.
-        /// </summary>
-        public IEnumerable<Type> ItemTypes => _items.Select(item => item.GetType());
+
+        public abstract Task<IReadOnlyList<Type>> GetItemTypesAsync();
 
         /// <summary>
         /// Attempts to move selected items from the specified source inventory to the current inventory.
