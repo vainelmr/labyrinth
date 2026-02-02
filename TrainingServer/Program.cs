@@ -29,7 +29,7 @@ app.MapGet("/", () => "Hello World!");
 //Ajouter POST /crawlers
 app.MapPost("/crawlers", (Guid appKey, TrainingServer.Services.CrawlerManager mgr) =>
 {
-    // appKey est maintenant un vrai paramètre swagger (query)
+    // appKey est un paramètre swagger
     var (id, crawler, bag) = mgr.Create();
 
     var dto = new ApiTypes.Crawler
