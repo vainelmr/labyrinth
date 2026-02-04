@@ -60,7 +60,7 @@ namespace Labyrinth.ApiClient
 
         private async Task<bool> UpdateRemote()
         {
-            _cache.Dir = _direction.GetApiDirection();
+            _cache.Direction = _direction.GetApiDirection();
             var response = await _httpClient.PatchAsJsonAsync($"/crawlers/{_cache.Id}?appKey={_appKey}", _cache);
 
             if (response.IsSuccessStatusCode &&
@@ -81,7 +81,7 @@ namespace Labyrinth.ApiClient
         private void UpdateCache(Dto.Crawler updatedCrawler)
         {
             _cache = updatedCrawler;
-            _cacheDirection = _cache.Dir.GetCrawlerDirection();
+            _cacheDirection = _cache.Direction.GetCrawlerDirection();
             _direction = (Direction)_cacheDirection.Clone();
             if (_cache.Bag   is not null) _bag  .UpdateList(_cache.Bag.Length);
             if (_cache.Items is not null) _items.UpdateList(_cache.Items.Length);

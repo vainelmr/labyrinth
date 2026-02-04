@@ -6,19 +6,20 @@ public sealed class MazeRepository
 {
     private const string MazeAscii = """
 +---------------+
-|      /        |
+|      /   k    |
 | +-----------+ |
 | |  /        | |
-| | +-------+ | |
-| | | x   k | | |
-| | | +---+ | | |
-| | | |   | | | |
-| | +-------+ | |
-| |        /  | |
+| | +-----   +| |
+| | | x   k   | |
+| | | +---+   | |
+| | | |   |   | |
+| | +------  +| |
+| |        /    |
 | +-----------+ |
-|      k   k    |
+|      k        |
 +---------------+
 """;
+
 
     public Labyrinth.Labyrinth CreateLabyrinth()
         => new(new AsciiParser(MazeAscii));

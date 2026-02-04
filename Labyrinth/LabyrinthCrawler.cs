@@ -1,6 +1,10 @@
 using Labyrinth.Crawl;
 using Labyrinth.Items;
 using Labyrinth.Tiles;
+using System.Threading;
+
+
+
 
 namespace Labyrinth
 {
@@ -12,27 +16,58 @@ namespace Labyrinth
 
             public int Y => _y;
 
-            public Task<Type> FacingTileType => Task.FromResult(ProcessFacingTile((x, y, tile) => tile.GetType()));
-
-            Direction ICrawler.Direction => _direction;
-
-            public Task<Inventory?> TryWalk(Inventory walkerInventory) => 
-                ProcessFacingTile((facingX, facingY, tile) =>
+            //public Task<Type> FacingTileType => Task.FromResult(ProcessFacingTile((x, y, tile) => tile.GetType()));
+            // 
+           
+            public Task<Type> FacingTileType => GetFacingTileTypeAsync();
+            private async Task<Type> GetFacingTileTypeAsync()
+            {
+                await _actionLock.WaitAsync();
+                try
                 {
-                    Inventory? tileContent = null;
+                    // Simulate action delay
+                    await Task.Delay(ActionDelay);
+                    return ProcessFacingTile((x, y, tile) => tile.GetType());
+                }
+                finally
+                {
+                    _actionLock.Release();
+                }
+            }
 
-                    if (tile is Door door)
+
+
+
+           public Direction Direction => _direction;
+
+
+            public async Task<Inventory?> TryWalk(Inventory walkerInventory)
+            {
+                await _actionLock.WaitAsync();
+                try
+                {
+                    await Task.Delay(ActionDelay);
+                    return ProcessFacingTile((facingX, facingY, tile) =>
                     {
-                        Open(door, walkerInventory);
-                    }
-                    if (tile.IsTraversable)
-                    {
-                        tileContent = tile.Pass();
-                        _x = facingX;
-                        _y = facingY;
-                    }
-                    return Task.FromResult(tileContent);
-                });
+                        Inventory? tileContent = null;
+                        if (tile is Door door)
+                        {
+                            Open(door, walkerInventory);
+                        }
+                        if (tile.IsTraversable)
+                        {
+                            tileContent = tile.Pass();
+                            _x = facingX;
+                             _y = facingY;
+                        }
+                        return tileContent;
+                    });
+                }
+                finally
+                {
+                    _actionLock.Release();
+                }
+            }
             
             private bool Open(Door door, Inventory walkerInventory)
             {
@@ -70,8 +105,14 @@ namespace Labyrinth
             private int _x = x;
             private int _y = y;
 
-            private readonly Direction _direction = Direction.North;
+            
+            private Direction _direction = Direction.North;
+            //public Direction Direction => _direction; // ou explicite si ton ICrawler impose explicite
+
+            private readonly SemaphoreSlim _actionLock = new(1, 1);
             private readonly Tile[,] _tiles = tiles;
+            private static readonly TimeSpan ActionDelay = TimeSpan.FromMilliseconds(80);
+
         }
     }
 }

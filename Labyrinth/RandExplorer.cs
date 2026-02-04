@@ -59,8 +59,6 @@ namespace Labyrinth
 
     return n;
 }
-
-
         public event EventHandler<CrawlingEventArgs>? PositionChanged;
 
         public event EventHandler<CrawlingEventArgs>? DirectionChanged;
