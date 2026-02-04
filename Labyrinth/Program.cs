@@ -25,7 +25,6 @@ void DrawExplorer(object? sender, CrawlingEventArgs e)
     var explorer = (RandExplorer)sender!;
     var crawler = explorer.Crawler;
 
-    // ✅ jamais de .Result : on lit la dernière valeur connue
     var facingTileType = explorer.LastFacingTileType ?? typeof(Outside);
 
     if (facingTileType != typeof(Outside))
@@ -35,7 +34,6 @@ void DrawExplorer(object? sender, CrawlingEventArgs e)
             e.Y + e.Direction.DeltaY + OffsetY
         );
 
-        // ✅ anti-crash si un type inconnu apparaît
         if (TileToChar.TryGetValue(facingTileType, out var tileChar))
             Console.Write(tileChar);
         else
