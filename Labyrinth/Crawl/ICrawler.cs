@@ -1,5 +1,4 @@
-﻿using Labyrinth.Items;
-using Labyrinth.Tiles;
+using Labyrinth.Items;
 
 namespace Labyrinth.Crawl
 {
@@ -12,27 +11,22 @@ namespace Labyrinth.Crawl
         /// Gets the current X position.
         /// </summary>
         int X { get; }
-
         /// <summary>
         /// Gets the current Y position.
         /// </summary>
         int Y { get; }
-
         /// <summary>
         /// Gets the current direction.
         /// </summary>
         Direction Direction { get; }
-
         /// <summary>
         /// Gets the tile in front of the crawler.
         /// </summary>
-        Task<Type> FacingTileType { get; }
-
+        Task<Type> GetFrontTileTypeAsync();
         /// <summary>
-        /// Pass the tile in front of the crawler and move into it.
+        /// Tells if the crawler is facing an exit or not
         /// </summary>
-        /// <param name="myInventory">The inventory of the crawler</param>
-        /// <returns>The inventory of the place reached, null if cannot walk in.</returns>
-        Task<Inventory?> TryWalk(Inventory myInventory);
+        Task<bool> IsFacingExitAsync();
+        Task<MoveResult> TryMoveAsync(Inventory inventory);
     }
 }

@@ -1,4 +1,4 @@
-﻿using Labyrinth.Build;
+using Labyrinth.Build;
 using Labyrinth.Crawl;
 using Labyrinth.Items;
 using Labyrinth.Tiles;
@@ -160,14 +160,15 @@ namespace Labyrinth.ApiClient
             public event EventHandler<StartEventArgs>? StartPositionFound;
 
             private bool IsInRange(int val, int max) => 0 <= val && val < max;
-            public void UpdateFacingTile(ClientCrawler crawler)
+            public async void UpdateFacingTile(ClientCrawler crawler)
             {
                 var x = crawler.X + crawler.Direction.DeltaX;
                 var y = crawler.Y + crawler.Direction.DeltaY;
 
-                if(IsInRange(x, Width) && IsInRange(y, Height) && Tiles[x, y] is Unknown)
+                if (IsInRange(x, Width) && IsInRange(y, Height) && Tiles[x, y] is Unknown)
                 {
-                    Tiles[x, y] = crawler.FacingTileType.Result.NewTile();
+                    var tileType = await crawler.GetFrontTileTypeAsync();
+                    Tiles[x, y] = tileType.NewTile();
                 }
             }
         }

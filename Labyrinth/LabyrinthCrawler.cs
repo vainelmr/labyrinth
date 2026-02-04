@@ -1,77 +1,28 @@
 using Labyrinth.Crawl;
 using Labyrinth.Items;
-using Labyrinth.Tiles;
 
 namespace Labyrinth
 {
     public partial class Labyrinth
     {
-        private class LabyrinthCrawler(int x, int y, Tile[,] tiles) : ICrawler
+        private class LabyrinthCrawler(Labyrinth labyrinth, int crawlerId) : ICrawler
         {
-            public int X => _x;
+            public int X => _labyrinth.GetCrawlerX(_crawlerId);
+            public int Y => _labyrinth.GetCrawlerY(_crawlerId);
+            public Direction Direction => _direction;
 
-            public int Y => _y;
+            public Task<Type> GetFrontTileTypeAsync() =>
+                _labyrinth.GetFrontTileTypeAsync(_crawlerId, _direction);
 
-            public Task<Type> FacingTileType => Task.FromResult(ProcessFacingTile((x, y, tile) => tile.GetType()));
+            public Task<bool> IsFacingExitAsync() =>
+                _labyrinth.IsFacingExitAsync(_crawlerId, _direction);
 
-            Direction ICrawler.Direction => _direction;
+            public Task<MoveResult> TryMoveAsync(Inventory inventory) =>
+                _labyrinth.TryMoveAsync(_crawlerId, _direction, inventory);
 
-            public Task<Inventory?> TryWalk(Inventory walkerInventory) => 
-                ProcessFacingTile((facingX, facingY, tile) =>
-                {
-                    Inventory? tileContent = null;
-
-                    if (tile is Door door)
-                    {
-                        Open(door, walkerInventory);
-                    }
-                    if (tile.IsTraversable)
-                    {
-                        tileContent = tile.Pass();
-                        _x = facingX;
-                        _y = facingY;
-                    }
-                    return Task.FromResult(tileContent);
-                });
-            
-            private bool Open(Door door, Inventory walkerInventory)
-            {
-                if (walkerInventory is not LocalInventory keyRing)
-                {
-                    throw new NotSupportedException("Local inventories only");
-                }
-                for(var maxKeys = walkerInventory.ItemTypes.Count(); maxKeys > 0; maxKeys--)
-                {
-                    if (door.Open(keyRing))
-                    {
-                        return true;
-                    }
-                }
-                return false;
-            }
-
-            private bool IsOut(int pos, int dimension) =>
-                pos < 0 || pos >= _tiles.GetLength(dimension);
-
-            private T ProcessFacingTile<T>(Func<int, int, Tile, T> process)
-            {
-                int facingX = _x + _direction.DeltaX,
-                    facingY = _y + _direction.DeltaY;
-
-                return process(
-                    facingX, facingY,
-                    IsOut(facingX, dimension: 0) ||
-                    IsOut(facingY, dimension: 1)
-                        ? Outside.Singleton
-                        : _tiles[facingX, facingY]
-                 );
-            }
-
-            private int _x = x;
-            private int _y = y;
-
-            private readonly Direction _direction = Direction.North;
-            private readonly Tile[,] _tiles = tiles;
+            private readonly Labyrinth _labyrinth = labyrinth;
+            private readonly int _crawlerId = crawlerId;
+            private Direction _direction = Direction.North;
         }
     }
 }
