@@ -32,10 +32,7 @@ namespace Labyrinth
                 }
             }
 
-
-
-
-           public Direction Direction => _direction;
+            public Task<bool> IsFacingExitAsync() => Task.FromResult(ProcessFacingTile((x, y, tile) => tile is Outside));
 
             public Task<MoveResult> TryMoveAsync(Inventory inventory) =>
                 _labyrinth.TryMoveAsync(_crawlerId, _direction, inventory);
