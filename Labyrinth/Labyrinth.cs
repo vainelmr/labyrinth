@@ -72,7 +72,9 @@ namespace Labyrinth
             return new LabyrinthCrawler(this, id);
         }
 
-        /// <summary>Serveur : retourne uniquement le TYPE de la case devant le crawler.</summary>
+        /// <summary>
+        /// Serveur : retourne uniquement le TYPE de la case devant le crawler.
+        /// </summary>
         internal Task<Type> GetFrontTileTypeAsync(int crawlerId, Direction direction)
         {
             var (x, y) = _crawlerPositions[crawlerId];
@@ -80,7 +82,9 @@ namespace Labyrinth
             return Task.FromResult(tile.GetType());
         }
 
-        /// <summary>Serveur : indique si la case devant le crawler est la sortie (outside).</summary>
+        /// <summary>
+        /// Serveur : indique si la case devant le crawler est la sortie (outside).
+        /// </summary>
         internal Task<bool> IsFacingExitAsync(int crawlerId, Direction direction)
         {
             var (x, y) = _crawlerPositions[crawlerId];
@@ -88,7 +92,9 @@ namespace Labyrinth
             return Task.FromResult(tile is Outside);
         }
 
-        /// <summary>Serveur : tente de déplacer le crawler. Valide à partir de l'inventaire fourni (ex. clé pour porte).</summary>
+        /// <summary>
+        /// Serveur : tente de déplacer le crawler. Valide à partir de l'inventaire fourni (ex. clé pour porte).
+        /// </summary>
         internal async Task<MoveResult> TryMoveAsync(int crawlerId, Direction direction, Inventory inventory)
         {
             var (x, y) = _crawlerPositions[crawlerId];
