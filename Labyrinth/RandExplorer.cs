@@ -8,6 +8,7 @@ namespace Labyrinth
     {
         private readonly ICrawler _crawler = crawler;
         private readonly IEnumRandomizer<Actions> _rnd = rnd;
+        public Type? LastFacingTileType { get; private set; }
         
         public enum Actions
         {
@@ -18,8 +19,8 @@ namespace Labyrinth
         public ICrawler Crawler => _crawler;
 
         public async Task<int> GetOut(int n, Inventory? bag = null)
-        {
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(n, 0, "n must be strictly positive");
+{
+    ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(n, 0, "n must be strictly positive");
 
             bag ??= new MyInventory();
             while (n > 0 && !await _crawler.IsFacingExitAsync())
