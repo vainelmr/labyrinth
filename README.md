@@ -13,7 +13,7 @@ Les tests sont réalisés via Swagger (`http://localhost:5030/swagger`), Après 
 
 ## Exemple : 
 - appKey = 00000000-0000-0000-0000-000000000000
---> cela génère un id qui sera utilisé ensuite 
+--> cela génère un id qui sera utilisé ensuite ( collé dans l'espace adequat)
 
 ### Tourner le crwaler
 {
