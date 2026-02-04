@@ -3,22 +3,19 @@ using Labyrinth.Items;
 using Labyrinth.Tiles;
 using System.Threading;
 
-
-
-
 namespace Labyrinth
 {
     public partial class Labyrinth
     {
-        private class LabyrinthCrawler(int x, int y, Tile[,] tiles) : ICrawler
+        private class LabyrinthCrawler(Labyrinth labyrinth, int crawlerId) : ICrawler
         {
-            public int X => _x;
+            public int X => _labyrinth.GetCrawlerX(_crawlerId);
+            public int Y => _labyrinth.GetCrawlerY(_crawlerId);
+            public Direction Direction => _direction;
 
-            public int Y => _y;
-
-            //public Task<Type> FacingTileType => Task.FromResult(ProcessFacingTile((x, y, tile) => tile.GetType()));
-            // 
-           
+            public Task<Type> GetFrontTileTypeAsync() =>
+                _labyrinth.GetFrontTileTypeAsync(_crawlerId, _direction);
+          
             public Task<Type> FacingTileType => GetFacingTileTypeAsync();
             private async Task<Type> GetFacingTileTypeAsync()
             {
@@ -40,6 +37,8 @@ namespace Labyrinth
 
            public Direction Direction => _direction;
 
+            public Task<MoveResult> TryMoveAsync(Inventory inventory) =>
+                _labyrinth.TryMoveAsync(_crawlerId, _direction, inventory);
 
             public async Task<Inventory?> TryWalk(Inventory walkerInventory)
             {
@@ -107,7 +106,6 @@ namespace Labyrinth
 
             
             private Direction _direction = Direction.North;
-            //public Direction Direction => _direction; // ou explicite si ton ICrawler impose explicite
 
             private readonly SemaphoreSlim _actionLock = new(1, 1);
             private readonly Tile[,] _tiles = tiles;

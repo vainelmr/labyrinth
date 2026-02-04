@@ -1,7 +1,6 @@
-﻿using Labyrinth.Crawl;
+using Labyrinth.Crawl;
 using Labyrinth.Items;
 using Labyrinth.Sys;
-using Labyrinth.Tiles;
 
 namespace Labyrinth
 {
@@ -23,42 +22,36 @@ namespace Labyrinth
 {
     ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(n, 0, "n must be strictly positive");
 
-    bag ??= new MyInventory();
+            bag ??= new MyInventory();
+            while (n > 0 && !await _crawler.IsFacingExitAsync())
+            {
+                var action = _rnd.Next();
 
-    while (n > 0)
-    {
-        //une lecture par tour
-        var facing = await _crawler.FacingTileType;
-        LastFacingTileType = facing;
-
-        // Stop si sortie
-        if (facing == typeof(Outside))
-            break;
-
-        EventHandler<CrawlingEventArgs>? changeEvent;
-
-        if (facing != typeof(Wall)
-            && _rnd.Next() == Actions.Walk
-            && await _crawler.TryWalk(bag) is Inventory roomContent)
-        {
-            await bag.TryMoveItemsFrom(
-                roomContent,
-                roomContent.ItemTypes.Select(_ => true).ToList()
-            );
-            changeEvent = PositionChanged;
+                if (action == Actions.Walk)
+                {
+                    var moveResult = await _crawler.TryMoveAsync(bag);
+                    if (moveResult is MoveResult.Success success && success.TileInventory is { } roomContent)
+                    {
+                        var which = (await roomContent.GetItemTypesAsync()).Select(_ => true).ToList();
+                        await bag.TryMoveItemsFrom(roomContent, which);
+                        PositionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
+                    }
+                    else
+                    {
+                        _crawler.Direction.TurnLeft();
+                        DirectionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
+                    }
+                }
+                else
+                {
+                    _crawler.Direction.TurnLeft();
+                    DirectionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
+                }
+                n--;
+            }
+            return n;
         }
-        else
-        {
-            _crawler.Direction.TurnLeft();
-            changeEvent = DirectionChanged;
-        }
 
-        changeEvent?.Invoke(this, new CrawlingEventArgs(_crawler));
-        n--;
-    }
-
-    return n;
-}
         public event EventHandler<CrawlingEventArgs>? PositionChanged;
 
         public event EventHandler<CrawlingEventArgs>? DirectionChanged;

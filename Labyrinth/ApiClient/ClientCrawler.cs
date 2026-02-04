@@ -1,4 +1,4 @@
-﻿using Labyrinth.Crawl;
+using Labyrinth.Crawl;
 using Labyrinth.Items;
 using System.Diagnostics.CodeAnalysis;
 using Dto = ApiTypes;
@@ -23,18 +23,28 @@ namespace Labyrinth.ApiClient
 
         public Direction Direction => _direction;
 
-        public Task<Type> FacingTileType => GetFacingTileTypeAsync();
+        public Task<Type> GetFrontTileTypeAsync() => GetFacingTileTypeAsync();
 
-        public async Task<Inventory?> TryWalk(Inventory myInventory)
+        public async Task<bool> IsFacingExitAsync()
         {
-            if(myInventory != _bag)
+            if (_cacheDirection != _direction && !await UpdateRemote())
+            {
+                while (_direction != _cacheDirection)
+                    _direction.TurnLeft();
+            }
+            return _cache.FacingTile == Dto.TileType.Outside;
+        }
+
+        public async Task<MoveResult> TryMoveAsync(Inventory myInventory)
+        {
+            if (myInventory != _bag)
             {
                 throw new ArgumentException("Can only walk with own bag inventory (returned by labyrinth).", nameof(myInventory));
             }
             _cache.Walking = true;
             return await UpdateRemote()
-                ? _items
-                : null;
+                ? new MoveResult.Success(_items)
+                : new MoveResult.Failure();
         }
 
         public async Task<bool> Delete() =>
@@ -101,7 +111,8 @@ namespace Labyrinth.ApiClient
                 var newCount = (await response.Content.ReadFromJsonAsync<Dto.InventoryItem[]>())?.Length ?? 0;
 
                 from.UpdateList(newCount);
-                to.UpdateList(to.ItemTypes.Count() + movesRequired.Count - newCount);
+                var toCount = (await to.GetItemTypesAsync()).Count;
+                to.UpdateList(toCount + movesRequired.Count - newCount);
                 return true;
             }
             return false;
@@ -116,7 +127,10 @@ namespace Labyrinth.ApiClient
         private class RemoteInventory(ClientCrawler parent, string type) : Inventory
         {
             public string TypeName { get; init; } = type;
-  
+
+            public override Task<IReadOnlyList<Type>> GetItemTypesAsync() =>
+                Task.FromResult<IReadOnlyList<Type>>(_items.Select(i => i.GetType()).ToList());
+
             public override async Task<bool> TryMoveItemsFrom(Inventory from, IList<bool> movesRequired)
             {
                 if(from != _parent._bag && from != _parent._items)

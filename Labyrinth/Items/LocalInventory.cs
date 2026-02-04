@@ -1,4 +1,4 @@
-﻿namespace Labyrinth.Items
+namespace Labyrinth.Items
 {
     public class LocalInventory : Inventory
     {
@@ -14,11 +14,15 @@
         /// operation succeeds; otherwise, <see langword="false"/>.</returns>
         public void MoveFirst(LocalInventory from)
         {
-            if (!TryMoveItemsFrom(from, from.ItemTypes.Select((_, i) => i == 0).ToList()).Result)
+            var types = from.GetItemTypesAsync().GetAwaiter().GetResult();
+            if (types.Count == 0 || !TryMoveItemsFrom(from, types.Select((_, i) => i == 0).ToList()).GetAwaiter().GetResult())
             {
                 throw new ArgumentException("Specified source inventory may be empty.");
             }
         }
+
+        public override Task<IReadOnlyList<Type>> GetItemTypesAsync() =>
+            Task.FromResult<IReadOnlyList<Type>>(_items.Select(i => i.GetType()).ToList());
 
         public override Task<bool> TryMoveItemsFrom(Inventory from, IList<bool> movesRequired)
         {
