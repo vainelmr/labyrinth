@@ -20,6 +20,9 @@ namespace Labyrinth.Items
         public bool HasItems => _items.Count>0;
 
 
+        /// <summary>
+        /// Gets the type of the item in the room.
+        /// </summary>
         public abstract Task<IReadOnlyList<Type>> GetItemTypesAsync();
 
         /// <summary>
