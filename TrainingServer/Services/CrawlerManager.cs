@@ -75,18 +75,17 @@ public sealed class CrawlerManager
         // 2) marche
         if (incoming.Walking)
         {
-            // TryWalk renvoie l'inventaire de la case atteinte ou null si bloqué
-            var reachedInventory = await crawler.TryWalk(bag);
-            if (reachedInventory is not null)
+            var moveResult = await crawler.TryMoveAsync(bag);
+            if (moveResult is MoveResult.Success success && success.TileInventory is not null)
             {
-                state.Items = reachedInventory;
+                state.Items = success.TileInventory;
             }
         }
 
         
 
         // 3) vision
-        var facingType = await crawler.FacingTileType;
+        var facingType = await crawler.GetFrontTileTypeAsync();
 
         // 4) réponse
         return new Dto.Crawler
@@ -141,7 +140,8 @@ public sealed class CrawlerManager
         }
 
         // Le client envoie exactement 1 bool par item dans la SOURCE
-        if (movesRequired.Count != source.ItemTypes.Count())
+        var sourceItemTypes = await source.GetItemTypesAsync();
+        if (movesRequired.Count != sourceItemTypes.Count)
         {
             return (false, source.GetApiInventoryItems());
         }

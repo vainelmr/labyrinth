@@ -16,6 +16,12 @@ namespace Labyrinth.ApiClient
             return [.. types.Select(_ => new Dto.InventoryItem { Type = Dto.ItemType.Key })];
         }
 
+        public static Dto.InventoryItem[] GetApiInventoryItems(this Inventory content)
+        {
+            var types = content.GetItemTypesAsync().GetAwaiter().GetResult();
+            return [.. types.Select(_ => new Dto.InventoryItem { Type = Dto.ItemType.Key })];
+        }
+
         public static Dto.TileType GetApiTileType(this Type tileType) =>
             _tileTypeMap[tileType];
 
