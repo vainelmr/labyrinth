@@ -1,0 +1,55 @@
+name: .NET CI
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+    branches: [master, main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Labyrinth.sln
+
+      - name: Build
+        run: dotnet build Labyrinth.sln --no-restore -c Release
+
+      - name: Test
+        run: dotnet test Labyrinth.sln --no-build -c Release --verbosity normal
+
+      - name: Publish Labyrinth (client console)
+        run: dotnet publish Labyrinth/Labyrinth.csproj -c Release -o ./publish/labyrinth-client --no-build
+
+      - name: Publish TrainingServer
+        run: dotnet publish TrainingServer/TrainingServer.csproj -c Release -o ./publish/training-server --no-build
+
+      - name: Upload Labyrinth client artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: labyrinth-client
+          path: ./publish/labyrinth-client
+
+      - name: Upload TrainingServer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: training-server
+          path: ./publish/training-server
+
+      - name: Upload build artifacts (bin/Release)
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output
+          path: |
+            Labyrinth/bin/Release/
+            LabyrinthTest/bin/Release/
+            ApiTypes/bin/Release/
+            TrainingServer/bin/Release/
