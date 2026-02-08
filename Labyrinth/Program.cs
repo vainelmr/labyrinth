@@ -92,7 +92,7 @@ else
     contest = await ContestSession.Open(new Uri(args[0]), Guid.Parse(args[1]), settings);
     labyrinth = new(contest.Builder);
     crawler = await contest.NewCrawler();
-    bag = contest.Bags.First();
+    bag = crawler is ClientCrawler cc ? cc.Bag : contest.Bags.First();
 }
 
 var prevX = crawler.X;
