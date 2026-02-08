@@ -88,7 +88,7 @@ public class Explorer
         bool myHasKey = bagItemsTypes.Contains(typeof(Labyrinth.Items.Key));
         int myBagCount = bagItemsTypes.Count;
 
-        if (_stepCount % 10 == 0)
+        if (_stepCount % 25 == 0)
         {
             await RecheckKnownDoorsAsync(currentPos);
         }
@@ -123,6 +123,18 @@ public class Explorer
             _currentTarget = null;
         }
 
+        // Dès que la sortie est trouvée, tous les crawlers la priorisent (avant toute frontière)
+        if (_map.ExitFound && _map.ExitPosition.HasValue && _currentTarget != _map.ExitPosition)
+        {
+            var pathToExit = _pathfinder.FindPath(currentPos, _map.ExitPosition.Value, myHasKey, _impassableDoorsForMe);
+            if (pathToExit != null && pathToExit.Count > 0)
+            {
+                if (_currentTarget.HasValue && _map.IsFrontier(_currentTarget.Value.X, _currentTarget.Value.Y))
+                    _coordinator.ReleaseFrontier(_currentTarget.Value);
+                _currentTarget = _map.ExitPosition;
+            }
+        }
+
         if (!_currentTarget.HasValue)
         {
             var ignoreList = new List<(int X, int Y)>();
@@ -131,18 +143,29 @@ public class Explorer
                 _currentTarget = _coordinator.AssignFrontier(_id, currentPos, ignoreList);
                 if (!_currentTarget.HasValue)
                 {
+                    // 1) Sortie atteignable : la prioriser
+                    if (_map.ExitFound && _map.ExitPosition.HasValue)
+                    {
+                        var pathToExit = _pathfinder.FindPath(currentPos, _map.ExitPosition.Value, myHasKey, _impassableDoorsForMe);
+                        if (pathToExit != null && pathToExit.Count > 0)
+                        {
+                            _currentTarget = _map.ExitPosition;
+                            break;
+                        }
+                    }
+
                     var knownRooms = _map.GetAllKnown()
                         .Where(pos => _map.Get(pos.X, pos.Y) == TileKnowledge.Room)
                         .Where(pos => pos != currentPos)
                         .Where(pos => !ignoreList.Contains(pos))
                         .Where(pos => !_unreachableRoomsForMe.Contains(pos))
                         .ToList();
-                    
+
                     if (knownRooms.Count > 0)
                     {
                         (int X, int Y)? bestRoom = null;
                         int bestDistance = int.MaxValue;
-                        
+
                         foreach (var room in knownRooms)
                         {
                             var testPath = _pathfinder.FindPath(currentPos, room, myHasKey, _impassableDoorsForMe);
@@ -160,32 +183,58 @@ public class Explorer
                                 ignoreList.Add(room);
                             }
                         }
-                        
+
                         if (bestRoom.HasValue)
                         {
                             _currentTarget = bestRoom.Value;
                             break;
                         }
-                        else
-                        {
-                            return false;
-                        }
                     }
-                    else
+
+                    // 2) Pas de salles atteignables : retenter la sortie, sinon cibler une porte (avec clé) pour ouvrir et découvrir
+                    if (_map.ExitFound && _map.ExitPosition.HasValue)
                     {
-                        if (_map.ExitFound && _map.ExitPosition.HasValue && _map.GetFrontiers().Count() == 0)
+                        var pathToExit = _pathfinder.FindPath(currentPos, _map.ExitPosition.Value, myHasKey, _impassableDoorsForMe);
+                        if (pathToExit != null && pathToExit.Count > 0)
                         {
                             _currentTarget = _map.ExitPosition;
                             break;
                         }
-                        else
+                    }
+
+                    if (myHasKey)
+                    {
+                        var knownDoors = _map.GetAllKnown()
+                            .Where(pos => _map.Get(pos.X, pos.Y) == TileKnowledge.Door)
+                            .ToList();
+                        (int X, int Y)? nearestDoor = null;
+                        int bestDoorDist = int.MaxValue;
+                        foreach (var door in knownDoors)
                         {
-                            return false;
+                            var pathToDoor = _pathfinder.FindPath(currentPos, door, true, _impassableDoorsForMe);
+                            if (pathToDoor != null && pathToDoor.Count > 0)
+                            {
+                                int d = Math.Abs(door.X - currentPos.X) + Math.Abs(door.Y - currentPos.Y);
+                                if (d < bestDoorDist)
+                                {
+                                    bestDoorDist = d;
+                                    nearestDoor = door;
+                                }
+                            }
+                        }
+                        if (nearestDoor.HasValue)
+                        {
+                            _currentTarget = nearestDoor.Value;
+                            break;
                         }
                     }
+
+                    return false;
                 }
 
-                if (!_map.IsFrontier(_currentTarget.Value.X, _currentTarget.Value.Y))
+                if (!_map.IsFrontier(_currentTarget.Value.X, _currentTarget.Value.Y) &&
+                    _currentTarget != _map.ExitPosition &&
+                    _map.Get(_currentTarget.Value.X, _currentTarget.Value.Y) != TileKnowledge.Door)
                 {
                     _coordinator.ReleaseFrontier(_currentTarget.Value);
                     _currentTarget = null;
@@ -206,8 +255,9 @@ public class Explorer
 
         if (_currentTarget.HasValue)
         {
-            if (!_map.IsFrontier(_currentTarget.Value.X, _currentTarget.Value.Y) && 
-                _currentTarget != _map.ExitPosition)
+            if (!_map.IsFrontier(_currentTarget.Value.X, _currentTarget.Value.Y) &&
+                _currentTarget != _map.ExitPosition &&
+                _map.Get(_currentTarget.Value.X, _currentTarget.Value.Y) != TileKnowledge.Door)
             {
                 _coordinator.ReleaseFrontier(_currentTarget.Value);
                 _currentTarget = null;
@@ -245,8 +295,14 @@ public class Explorer
         bool actuallyMoved = _crawler.X != currentPos.X || _crawler.Y != currentPos.Y;
 
         if (moveResult is MoveResult.Success success && actuallyMoved)
-        {            
+        {
             var newPos = (_crawler.X, _crawler.Y);
+            if (_currentTarget.HasValue && _map.Get(_currentTarget.Value.X, _currentTarget.Value.Y) == TileKnowledge.Door && newPos != _currentTarget.Value)
+            {
+                _map.Update(_currentTarget.Value.X, _currentTarget.Value.Y, TileKnowledge.Room);
+                _map.InvalidatePathCache();
+                _currentTarget = null;
+            }
             if (_map.ExitFound && _map.ExitPosition.HasValue && newPos == _map.ExitPosition.Value &&
                 _map.GetFrontiers().Count() == 0)
             {                
