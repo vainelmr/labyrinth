@@ -1,4 +1,4 @@
-﻿using Labyrinth.ApiClient;
+using Labyrinth.ApiClient;
 using Labyrinth.Exploration;
 using Microsoft.Extensions.Logging;
 using System.Text;
@@ -22,25 +22,52 @@ class Program
 
         if (args.Length < 2)
         {
-            logger.LogError("Usage: Client <serverUrl> <appKey>");
+            logger.LogError("Usage: Client <serverUrl> <appKey> [appKeyTeam2]");
+            logger.LogError("  With 2 keys, runs two teams in parallel (competition scenario).");
             return 1;
         }
 
         var serverUrl = args[0];
         var appKey = args[1];
+        var secondAppKey = args.Length > 2 ? args[2] : null;
 
-        logger.LogInformation("Client starting with server URL: {ServerUrl} and AppKey: {AppKey}", serverUrl, appKey.Substring(0, 8) + "...");
+        if (secondAppKey is null)
+        {
+            logger.LogInformation("Client starting with server URL: {ServerUrl} and AppKey: {AppKey}", serverUrl, appKey.Substring(0, Math.Min(8, appKey.Length)) + "...");
+            try
+            {
+                await CleanupExistingCrawlers(serverUrl, appKey, logger);
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning("Cleanup warning: {Message}", ex.Message);
+            }
+            return await RunExploration(serverUrl, appKey, logger);
+        }
 
-        try 
+        // Mode 2 équipes (compétition) : lancer les deux sessions en parallèle
+        logger.LogInformation("Competition mode: 2 teams, server {ServerUrl}", serverUrl);
+        try
         {
             await CleanupExistingCrawlers(serverUrl, appKey, logger);
+            await CleanupExistingCrawlers(serverUrl, secondAppKey, logger);
         }
-        catch(Exception ex)
+        catch (Exception ex)
         {
-             logger.LogWarning("Cleanup warning: {Message}", ex.Message);
+            logger.LogWarning("Cleanup warning: {Message}", ex.Message);
         }
 
-        return await RunExploration(serverUrl, appKey, logger);
+        var loggerTeam1 = loggerFactory.CreateLogger("Team1");
+        var loggerTeam2 = loggerFactory.CreateLogger("Team2");
+        var tasks = new[]
+        {
+            RunExploration(serverUrl, appKey, loggerTeam1),
+            RunExploration(serverUrl, secondAppKey, loggerTeam2)
+        };
+        var results = await Task.WhenAll(tasks);
+        var exitReached = results.All(r => r == 0);
+        logger.LogInformation("Both teams finished. Exit reached by all: {Success}", exitReached);
+        return exitReached ? 0 : 1;
     }
 
     static async Task CleanupExistingCrawlers(string serverUrl, string appKey, ILogger logger)
@@ -71,7 +98,7 @@ class Program
         }
     }
 
-    static async Task<int> RunExploration(string serverUrl, string appKey, ILogger logger)
+    static async Task<int> RunExploration(string serverUrl, string appKey, ILogger logger, bool enableDisplay = true)
     {
         try
         {
@@ -132,7 +159,7 @@ class Program
                 logger.LogInformation("Crawler {Id} created at ({X}, {Y})", i, crawler.X, crawler.Y);
             }
 
-            const int maxSteps = 500;
+            const int maxSteps = 2000;
             bool exitReached = false;
             
             var crawlerColors = new[] { 
@@ -145,12 +172,7 @@ class Program
 
             for (int step = 0; step < maxSteps; step++)
             {
-                var results = new List<bool>();
-                foreach (var explorer in explorers)
-                {
-                    var result = await explorer.StepAsync();
-                    results.Add(result);
-                }
+                var results = await Task.WhenAll(explorers.Select(e => e.StepAsync()));
 
                 if (results.All(r => !r))
                 {
@@ -158,37 +180,31 @@ class Program
                     exitReached = true;
                     break;
                 }
-
-                if (step % 5 == 0)
+                if (map.ExitFound && results.Any(r => !r))
                 {
-                    var sb = new StringBuilder();
-                    sb.AppendLine($"═══ Step {step} ═══");
-                    
-                    foreach (var exp in explorers)
-                    {
-                        var index = explorers.IndexOf(exp);
-                        var targetStr = exp.Target.HasValue ? $"Target:({exp.Target.Value.X},{exp.Target.Value.Y})" : "No Target";
-                        sb.AppendLine($"Crawler {index}: {targetStr}");
-                    }
-
-                    sb.AppendLine($"Map: {map.KnownCount} known, {map.GetFrontiers().Count()} frontiers, {coordinator.AssignedFrontierCount} assigned");
-                    
-                    if (map.ExitFound)
-                    {
-                         sb.AppendLine($"EXIT FOUND: ({map.ExitPosition!.Value.X},{map.ExitPosition!.Value.Y})");
-                    }
-                    
-                    try { Console.Clear(); } catch { }
-                    Console.WriteLine(sb.ToString());
-
-                    var currentCrawlers = session.Crawlers.ToList();
-                    var crawlerPositions = currentCrawlers.Select((c, idx) => 
-                        (c.X, c.Y, c.Direction.ToString() ?? "Unknown")).ToList();
-                    
-                    mapExporter.PrintMapWithColors(crawlerPositions, crawlerColors);
-                    
-                    await Task.Delay(10);
+                    logger.LogInformation("Step {Step}: A crawler reached the exit", step);
+                    exitReached = true;
+                    break;
                 }
+
+                var sb = new StringBuilder();
+                sb.AppendLine($"═══ Step {step} ═══");
+                foreach (var exp in explorers)
+                {
+                    var index = explorers.IndexOf(exp);
+                    var targetStr = exp.Target.HasValue ? $"Target:({exp.Target.Value.X},{exp.Target.Value.Y})" : "No Target";
+                    sb.AppendLine($"Crawler {index}: {targetStr}");
+                }
+                sb.AppendLine($"Map: {map.KnownCount} known, {map.GetFrontiers().Count()} frontiers, {coordinator.AssignedFrontierCount} assigned");
+                if (map.ExitFound)
+                    sb.AppendLine($"EXIT FOUND: ({map.ExitPosition!.Value.X},{map.ExitPosition!.Value.Y})");
+                try { Console.Clear(); } catch { }
+                Console.WriteLine(sb.ToString());
+                var currentCrawlers = session.Crawlers.ToList();
+                var crawlerPositions = currentCrawlers.Select((c, idx) =>
+                    (c.X, c.Y, c.Direction.ToString() ?? "Unknown")).ToList();
+                mapExporter.PrintMapWithColors(crawlerPositions, crawlerColors);
+                await Task.Delay(25);
             }
 
             Console.WriteLine("\n");
