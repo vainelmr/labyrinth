@@ -34,17 +34,20 @@ namespace Labyrinth
                     {
                         var which = (await roomContent.GetItemTypesAsync()).Select(_ => true).ToList();
                         await bag.TryMoveItemsFrom(roomContent, which);
+                        LastFacingTileType = await _crawler.GetFrontTileTypeAsync();
                         PositionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
                     }
                     else
                     {
                         _crawler.Direction.TurnLeft();
+                        LastFacingTileType = await _crawler.GetFrontTileTypeAsync();
                         DirectionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
                     }
                 }
                 else
                 {
                     _crawler.Direction.TurnLeft();
+                    LastFacingTileType = await _crawler.GetFrontTileTypeAsync();
                     DirectionChanged?.Invoke(this, new CrawlingEventArgs(_crawler));
                 }
                 n--;
