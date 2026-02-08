@@ -25,9 +25,18 @@ namespace Labyrinth.ApiClient
         public static async Task<ContestSession> Open(Uri serverUrl, Guid appKey, Dto.Settings? settings = null)
         {
             var http = new HttpClient() { BaseAddress = serverUrl };
-            
-            return await CreateCrawler(http, appKey, settings) is Dto.Crawler crawlerDto 
-                ? new ContestSession(http, appKey, crawlerDto)
+            Dto.Crawler crawlerDto;
+            try
+            {
+                crawlerDto = await CreateCrawler(http, appKey, settings);
+            }
+            catch (HttpRequestException ex) when (IsTooManyCrawlers(ex))
+            {
+                await TryReleaseCrawlersForAppKey(http, appKey);
+                crawlerDto = await CreateCrawler(http, appKey, settings);
+            }
+            return crawlerDto is { } dto
+                ? new ContestSession(http, appKey, dto)
                 : throw new FormatException("Failed to read a crawler");
         }
 
@@ -65,10 +74,18 @@ namespace Labyrinth.ApiClient
         /// </summary>
         public async Task<ICrawler> NewCrawler()
         {
-            var newCrawlerDto = await CreateCrawler(_http, _appKey);
+            Dto.Crawler newCrawlerDto;
+            try
+            {
+                newCrawlerDto = await CreateCrawler(_http, _appKey);
+            }
+            catch (HttpRequestException ex) when (IsTooManyCrawlers(ex))
+            {
+                await TryReleaseCrawlersForAppKey(_http, _appKey);
+                newCrawlerDto = await CreateCrawler(_http, _appKey);
+            }
             var (crawler, bag) = NewCrawlerAndItsBag(_appKey, newCrawlerDto);
             _crawlers.Add((crawler, bag));
-            
             return crawler;
         }
 
@@ -98,15 +115,38 @@ namespace Labyrinth.ApiClient
             }
         }
 
+        private static bool IsTooManyCrawlers(HttpRequestException ex) =>
+            ex.Message.Contains("Trop de crawlers", StringComparison.OrdinalIgnoreCase)
+            || ex.Message.Contains("Too many crawler", StringComparison.OrdinalIgnoreCase);
+
+        private static async Task TryReleaseCrawlersForAppKey(HttpClient http, Guid appKey)
+        {
+            try
+            {
+                var response = await http.GetAsync($"/crawlers?appKey={appKey}");
+                if (!response.IsSuccessStatusCode) return;
+                var crawlers = await response.Content.ReadFromJsonAsync<Dto.Crawler[]>();
+                if (crawlers is null or { Length: 0 }) return;
+                foreach (var c in crawlers)
+                    await http.DeleteAsync($"/crawlers/{c.Id}?appKey={appKey}");
+            }
+            catch { /* serveur peut ne pas exposer GET /crawlers */ }
+        }
+
         private static async Task<Dto.Crawler> CreateCrawler(HttpClient http, Guid appKey, Dto.Settings? settings = null)
         {
             var response = await http.PostAsJsonAsync(
                 $"/crawlers?appKey={appKey}", settings
             );
-            return await response
-                .EnsureSuccessStatusCode()
-                .Content
-                .ReadFromJsonAsync<Dto.Crawler>() is Dto.Crawler crawlerDto
+            if (!response.IsSuccessStatusCode)
+            {
+                var body = await response.Content.ReadAsStringAsync();
+                var msg = body.Contains("Too many crawler", StringComparison.OrdinalIgnoreCase)
+                    ? "Trop de crawlers pour cette clé. Fermez toutes les instances du client (Ctrl+C) puis réessayez."
+                    : $"Le serveur a répondu {(int)response.StatusCode} ({response.ReasonPhrase}). {body}";
+                throw new HttpRequestException(msg);
+            }
+            return await response.Content.ReadFromJsonAsync<Dto.Crawler>() is Dto.Crawler crawlerDto
                 ? crawlerDto
                 : throw new FormatException("Failed to read a crawler");
         }
