@@ -17,6 +17,13 @@ public sealed class SharedMap
     private readonly ConcurrentDictionary<(int X, int Y), TileKnowledge> _tiles = new();
     private readonly ConcurrentDictionary<(int X, int Y), bool> _frontiers = new();
     private readonly object _updateLock = new();
+    private (int X, int Y)? _exitPosition;
+    private int _version = 0;
+
+    /// <summary>
+    /// Gets the current version of the map. Increments each time a tile is updated.
+    /// </summary>
+    public int Version => _version;
 
     /// <summary>
     /// Gets the knowledge state of a tile at the specified position.
@@ -48,6 +55,19 @@ public sealed class SharedMap
             {
                 AddNeighborsToFrontier(x, y);
             }
+            
+            _version++;
+        }
+    }
+
+    /// <summary>
+    /// Forces a version increment to invalidate all cached pathfinding results.
+    /// </summary>
+    public void InvalidatePathCache()
+    {
+        lock (_updateLock)
+        {
+            _version++;
         }
     }
 
@@ -120,6 +140,14 @@ public sealed class SharedMap
     }
 
     /// <summary>
+    /// Gets all known positions regardless of tile type.
+    /// </summary>
+    public IReadOnlyCollection<(int X, int Y)> GetAllKnown()
+    {
+        return _tiles.Keys.ToArray();
+    }
+
+    /// <summary>
     /// Gets the bounds of the known map.
     /// </summary>
     public (int MinX, int MinY, int MaxX, int MaxY)? GetBounds()
@@ -135,5 +163,35 @@ public sealed class SharedMap
             MaxY: positions.Max(p => p.Y)
         );
     }
+
+    /// <summary>
+    /// Marks a position as the exit.
+    /// </summary>
+    public void MarkExit(int x, int y)
+    {
+        lock (_updateLock)
+        {
+            _exitPosition = (x, y);
+        }
+    }
+
+    /// <summary>
+    /// Gets the exit position if it has been found.
+    /// </summary>
+    public (int X, int Y)? ExitPosition
+    {
+        get
+        {
+            lock (_updateLock)
+            {
+                return _exitPosition;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks if the exit has been found.
+    /// </summary>
+    public bool ExitFound => _exitPosition.HasValue;
 }
 

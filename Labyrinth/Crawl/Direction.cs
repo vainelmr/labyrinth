@@ -55,6 +55,15 @@
         public override int GetHashCode() =>
             HashCode.Combine(DeltaX, DeltaY);
 
+        public override string ToString()
+        {
+            if (DeltaX == 0 && DeltaY == -1) return "North";
+            if (DeltaX == 0 && DeltaY == 1) return "South";
+            if (DeltaX == 1 && DeltaY == 0) return "East";
+            if (DeltaX == -1 && DeltaY == 0) return "West";
+            return "Unknown";
+        }
+
         public object Clone() => new Direction(DeltaX, DeltaY);
 
         public static bool operator ==(Direction left, Direction right) =>

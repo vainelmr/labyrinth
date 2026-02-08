@@ -55,6 +55,7 @@ namespace Labyrinth.ApiClient
         public event EventHandler? Changed;
 
         public Inventory Bag => _bag;
+        public Inventory CurrentTileInventory => _items;
 
         private async Task<Type> GetFacingTileTypeAsync()
         {
@@ -71,9 +72,38 @@ namespace Labyrinth.ApiClient
         private async Task<bool> UpdateRemote()
         {
             _cache.Direction = _direction.GetApiDirection();
-            var response = await _httpClient.PatchAsJsonAsync($"/crawlers/{_cache.Id}?appKey={_appKey}", _cache);
+            _cache.Bag = _bag.ToDtoArray();
 
-            if (response.IsSuccessStatusCode &&
+            HttpResponseMessage? response = null;
+            var url = $"/crawlers/{_cache.Id}?appKey={_appKey}";
+
+            for (int i = 0; i < 3; i++)
+            {
+                try 
+                {
+                    response = await _httpClient.PatchAsJsonAsync(url, _cache);
+                    if (response.IsSuccessStatusCode) break;
+
+                    var body = "";
+                    try { body = await response.Content.ReadAsStringAsync(); } catch {}
+
+                    if ((int)response.StatusCode == 403 || (int)response.StatusCode == 429)
+                    {
+                        await Task.Delay(2000 * (i + 1));
+                    }
+                    else
+                    {
+                        await Task.Delay(500); 
+                    }
+                }
+                catch(Exception ex)
+                {
+                    Console.WriteLine($"[API-EXCEPTION] PATCH {url} : {ex.Message}");
+                    await Task.Delay(500);
+                }
+            }
+
+            if (response != null && response.IsSuccessStatusCode &&
                 await response.Content.ReadFromJsonAsync<Dto.Crawler>() is Dto.Crawler lastState)
             {
                 UpdateCache(lastState);
@@ -98,21 +128,61 @@ namespace Labyrinth.ApiClient
         }
 
         private async Task<bool> UpdateRemoteInventories(RemoteInventory from, RemoteInventory to, IList<bool> movesRequired)
-        {
-            var response = await _httpClient.PutAsJsonAsync(
-                $"/crawlers/{_cache.Id}/{from.TypeName}?appKey={_appKey}",
-                movesRequired.Select(moveReq => new Dto.InventoryItem { 
+        {            
+            var targetEndpoint = from.TypeName;
+            var url = $"/crawlers/{_cache.Id}/{targetEndpoint}?appKey={_appKey}";
+            
+            var previousCount = (await from.GetItemTypesAsync()).Count;
+            
+            var payload = movesRequired.Select(moveReq => new Dto.InventoryItem { 
                     Type = Dto.ItemType.Key, 
                     MoveRequired = moveReq 
-                })
-            );
-            if (response.IsSuccessStatusCode)
+                }).ToArray();
+            
+            HttpResponseMessage? response = null;
+            for (int i = 0; i < 3; i++)
+            {
+                try
+                {
+                    response = await _httpClient.PutAsJsonAsync(url, payload);
+                    if (response.IsSuccessStatusCode) break;
+                    
+                    var body = "";
+                    try { body = await response.Content.ReadAsStringAsync(); } catch {}
+
+                     if ((int)response.StatusCode == 403 || (int)response.StatusCode == 429)
+                    {
+                        var waitTime = 2000 * (i+1);
+                        await Task.Delay(waitTime);
+                    }
+                    else
+                    {
+                        await Task.Delay(500);
+                    }
+                }
+                catch(Exception ex)
+                {
+                    await Task.Delay(500);
+                }
+            }
+
+            if (response != null && response.IsSuccessStatusCode)
             {
                 var newCount = (await response.Content.ReadFromJsonAsync<Dto.InventoryItem[]>())?.Length ?? 0;
+                
+                int takenCount = previousCount - newCount;
+                
+                if (takenCount < 0 || takenCount == 0 && movesRequired.Any(x => x))
+                {
+                    takenCount = movesRequired.Count(x => x);
+                }
+
 
                 from.UpdateList(newCount);
-                var toCount = (await to.GetItemTypesAsync()).Count;
-                to.UpdateList(toCount + movesRequired.Count - newCount);
+                
+                var currentToCount = (await to.GetItemTypesAsync()).Count;
+                to.UpdateList(currentToCount + takenCount);
+                
                 return true;
             }
             return false;
@@ -128,8 +198,22 @@ namespace Labyrinth.ApiClient
         {
             public string TypeName { get; init; } = type;
 
-            public override Task<IReadOnlyList<Type>> GetItemTypesAsync() =>
-                Task.FromResult<IReadOnlyList<Type>>(_items.Select(i => i.GetType()).ToList());
+            public override async Task<IReadOnlyList<Type>> GetItemTypesAsync()
+            {
+                if (TypeName == "items")
+                {
+                    try
+                    {
+                        var items = await _parent.FetchInventoryAsync("items");
+                        UpdateList(items.Length);
+                    }
+                    catch
+                    {
+                    }
+                }
+
+                return _items.Select(i => i.GetType()).ToList();
+            }
 
             public override async Task<bool> TryMoveItemsFrom(Inventory from, IList<bool> movesRequired)
             {
@@ -148,7 +232,23 @@ namespace Labyrinth.ApiClient
                     _items.Add(new Key()); 
             }
 
+            internal Dto.InventoryItem[] ToDtoArray()
+            {
+                return _items.Select(i => new Dto.InventoryItem 
+                { 
+                    Type = Dto.ItemType.Key 
+                }).ToArray();
+            }
+
             private ClientCrawler _parent = parent;
         }
+
+        private async Task<Dto.InventoryItem[]> FetchInventoryAsync(string type)
+{
+    var res = await _httpClient.GetAsync($"/crawlers/{_cache.Id}/{type}?appKey={_appKey}");
+    res.EnsureSuccessStatusCode();
+    return await res.Content.ReadFromJsonAsync<Dto.InventoryItem[]>() ?? Array.Empty<Dto.InventoryItem>();
+}
+
     }
 }

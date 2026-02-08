@@ -10,6 +10,8 @@ public class BFSPathfinder
 {
     private readonly SharedMap _map;
     private readonly ILogger _logger;
+    private readonly Dictionary<(int, int, int, bool, int), List<(int, int)>?> _pathCache = new();
+    private int _cachedMapVersion = -1;
 
     public BFSPathfinder(SharedMap map, ILogger logger)
     {
@@ -20,9 +22,27 @@ public class BFSPathfinder
     /// <summary>
     /// Finds the shortest path from the start position to the target position using BFS.
     /// </summary>
+    /// <param name="canPassThroughDoors">If true, doors are treated as passable tiles. If false, doors block the path.</param>
+    /// <param name="impassableDoorsForMe">Set of specific door positions that are impassable for this crawler.</param>
     /// <returns>List of coordinates representing the path, or null if no path is found.</returns>
-    public List<(int X, int Y)>? FindPath((int X, int Y) start, (int X, int Y) target)
+    public List<(int X, int Y)>? FindPath((int X, int Y) start, (int X, int Y) target, bool canPassThroughDoors = true, HashSet<(int X, int Y)>? impassableDoorsForMe = null)
     {
+        impassableDoorsForMe ??= new HashSet<(int X, int Y)>();
+        
+        if (_cachedMapVersion != _map.Version)
+        {
+            _pathCache.Clear();
+            _cachedMapVersion = _map.Version;
+        }
+        
+        int doorSetHash = impassableDoorsForMe.Count > 0 ? 
+            impassableDoorsForMe.Select(d => d.X * 1000 + d.Y).OrderBy(h => h).Aggregate(0, (acc, h) => acc ^ h) : 0;
+        var cacheKey = (start.X, start.Y, target.X * 1000 + target.Y, canPassThroughDoors, doorSetHash);
+        if (_pathCache.TryGetValue(cacheKey, out var cachedPath))
+        {
+            return cachedPath;
+        }
+        
         var queue = new Queue<(int X, int Y)>();
         var cameFrom = new Dictionary<(int, int), (int, int)?>();
         var visited = new HashSet<(int, int)>();
@@ -37,7 +57,9 @@ public class BFSPathfinder
 
             if (current == target)
             {
-                return ReconstructPath(cameFrom, start, target);
+                var path = ReconstructPath(cameFrom, start, target);
+                _pathCache[cacheKey] = path;
+                return path;
             }
 
             foreach (var neighbor in GetNeighbors(current))
@@ -47,7 +69,16 @@ public class BFSPathfinder
 
                 var knowledge = _map.Get(neighbor.X, neighbor.Y);
                 
-                if (knowledge == TileKnowledge.Wall || knowledge == TileKnowledge.Door)
+                if (knowledge == TileKnowledge.Wall)
+                    continue;
+
+                if (knowledge == TileKnowledge.Door && impassableDoorsForMe.Contains(neighbor) && neighbor != target)
+                    continue;
+
+                if (knowledge == TileKnowledge.Door && !canPassThroughDoors && neighbor != target)
+                    continue;
+
+                if (knowledge == TileKnowledge.Outside && neighbor != target)
                     continue;
 
                 visited.Add(neighbor);
@@ -56,8 +87,7 @@ public class BFSPathfinder
             }
         }
 
-        _logger.LogWarning("No path found from ({StartX},{StartY}) to ({TargetX},{TargetY})", 
-            start.X, start.Y, target.X, target.Y);
+        _pathCache[cacheKey] = null;
         return null;
     }
 
@@ -77,7 +107,6 @@ public class BFSPathfinder
 
         path.Reverse();
         
-        _logger.LogDebug("Path found : {PathLength} steps", path.Count);
         return path;
     }
 

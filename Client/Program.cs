@@ -1,6 +1,9 @@
 ﻿using Labyrinth.ApiClient;
 using Labyrinth.Exploration;
 using Microsoft.Extensions.Logging;
+using System.Text;
+using System.Net.Http.Json;
+using Dto = ApiTypes;
 
 namespace Client;
 
@@ -28,7 +31,44 @@ class Program
 
         logger.LogInformation("Client starting with server URL: {ServerUrl} and AppKey: {AppKey}", serverUrl, appKey.Substring(0, 8) + "...");
 
+        try 
+        {
+            await CleanupExistingCrawlers(serverUrl, appKey, logger);
+        }
+        catch(Exception ex)
+        {
+             logger.LogWarning("Cleanup warning: {Message}", ex.Message);
+        }
+
         return await RunExploration(serverUrl, appKey, logger);
+    }
+
+    static async Task CleanupExistingCrawlers(string serverUrl, string appKey, ILogger logger)
+    {
+        using var tempClient = new HttpClient { BaseAddress = new Uri(serverUrl) };
+        var getUrl = $"/crawlers?appKey={appKey}";
+        
+        try 
+        {
+            var crawlers = await tempClient.GetFromJsonAsync<Dto.Crawler[]>(getUrl);
+            if (crawlers != null && crawlers.Length > 0)
+            {
+                foreach (var c in crawlers)
+                {
+                    await tempClient.DeleteAsync($"/crawlers/{c.Id}?appKey={appKey}");
+                    await Task.Delay(500);
+                }
+            }
+        }
+        catch (HttpRequestException ex)
+        {
+             if(ex.StatusCode != System.Net.HttpStatusCode.NotFound)
+                logger.LogWarning("Failed to list crawlers during cleanup: {Status} (This is expected if no crawlers exist or key is fresh)", ex.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Cleanup check skipped: {Message}", ex.Message);
+        }
     }
 
     static async Task<int> RunExploration(string serverUrl, string appKey, ILogger logger)
@@ -36,99 +76,157 @@ class Program
         try
         {
             var session = await ContestSession.Open(new Uri(serverUrl), Guid.Parse(appKey));
-            var crawler = session.Crawlers.First();
-            var bag = session.Bags.First();
             
-            logger.LogInformation("Crawler created at ({X}, {Y})", crawler.X, crawler.Y);
+            logger.LogInformation("Spawning additional crawlers...");
+            int spawnedCount = 1;
+            
+            try 
+            { 
+                await session.NewCrawler(); 
+                spawnedCount++;
+                logger.LogInformation("Crawler 2 spawned successfully");
+            } 
+            catch (Exception ex) 
+            { 
+                logger.LogWarning("Failed to spawn crawler 2: {Msg}", ex.Message);
+            }
+            
+            try 
+            { 
+                await session.NewCrawler(); 
+                spawnedCount++;
+                logger.LogInformation("Crawler 3 spawned successfully");
+            } 
+            catch (Exception ex) 
+            { 
+                logger.LogWarning("Failed to spawn crawler 3: {Msg}", ex.Message);
+            }
+            
+            logger.LogInformation("Total crawlers spawned: {Count}/3", spawnedCount);
+
+            var crawlers = session.Crawlers.ToList();
+            var bags = session.Bags.ToList();
+            
+            logger.LogInformation("Session opened with {Count} crawler(s)", crawlers.Count);
+            
+            for (int i = 0; i < crawlers.Count; i++)
+            {
+                logger.LogInformation("Crawler {Id} initial position: ({X},{Y}) facing {Direction}", 
+                    i, crawlers[i].X, crawlers[i].Y, crawlers[i].Direction);
+            }
 
             var map = new SharedMap();
+            var coordinator = new Coordinator(map, logger);
             var pathfinder = new BFSPathfinder(map, logger);
+            var mapExporter = new MapExporter(map);
 
-            for (int step = 0; step < 100; step++)
+            var explorers = new List<Explorer>();
+            for (int i = 0; i < crawlers.Count; i++)
             {
-                // 1. Observe and update map
-                var currentPos = (crawler.X, crawler.Y);
-                var facingTileType = await crawler.GetFrontTileTypeAsync();
-                var facingPos = GetFacingPosition(currentPos, crawler.Direction);
+                var crawler = crawlers[i];
+                var bag = bags[i];
                 
-                map.Update(facingPos.X, facingPos.Y, TileTypeToKnowledge(facingTileType));
-                map.Update(currentPos.X, currentPos.Y, TileKnowledge.Room);
+                var explorer = new Explorer(i, crawler, bag, map, coordinator, pathfinder, logger);
+                explorers.Add(explorer);
                 
-                logger.LogInformation("Step {Step}: Position ({X},{Y}), Map: {Known} cells, {Frontiers} frontiers", 
-                    step, currentPos.X, currentPos.Y, map.KnownCount, map.GetFrontiers().Count());
+                logger.LogInformation("Crawler {Id} created at ({X}, {Y})", i, crawler.X, crawler.Y);
+            }
 
-                // 2. Pathfinding towards the next frontier
-                var frontiers = map.GetFrontiers().ToList();
-                if (frontiers.Count == 0)
+            const int maxSteps = 500;
+            bool exitReached = false;
+            
+            var crawlerColors = new[] { 
+                ConsoleColor.Red, 
+                ConsoleColor.Cyan, 
+                ConsoleColor.Magenta, 
+                ConsoleColor.Yellow, 
+                ConsoleColor.Green 
+            };
+
+            for (int step = 0; step < maxSteps; step++)
+            {
+                var results = new List<bool>();
+                foreach (var explorer in explorers)
                 {
-                    logger.LogInformation("No more frontiers to explore. Ending exploration.");
+                    var result = await explorer.StepAsync();
+                    results.Add(result);
+                }
+
+                if (results.All(r => !r))
+                {
+                    logger.LogInformation("Step {Step}: All crawlers finished exploration", step);
+                    exitReached = true;
                     break;
                 }
 
-                var targetFrontier = frontiers[0];
-                var path = pathfinder.FindPath(currentPos, targetFrontier);
-
-                if (path == null || path.Count == 0)
+                if (step % 5 == 0)
                 {
-                    logger.LogWarning("No path to frontier {Frontier}", targetFrontier);
-                    break;
-                }
+                    var sb = new StringBuilder();
+                    sb.AppendLine($"═══ Step {step} ═══");
+                    
+                    foreach (var exp in explorers)
+                    {
+                        var index = explorers.IndexOf(exp);
+                        var targetStr = exp.Target.HasValue ? $"Target:({exp.Target.Value.X},{exp.Target.Value.Y})" : "No Target";
+                        sb.AppendLine($"Crawler {index}: {targetStr}");
+                    }
 
-                // 3. Move towards the next position in the path
-                var nextPos = path[0];
-                var targetDirection = GetDirectionTo(currentPos, nextPos);
-                
-                while (crawler.Direction != targetDirection)
-                {
-                    crawler.Direction.TurnLeft();
-                }
+                    sb.AppendLine($"Map: {map.KnownCount} known, {map.GetFrontiers().Count()} frontiers, {coordinator.AssignedFrontierCount} assigned");
+                    
+                    if (map.ExitFound)
+                    {
+                         sb.AppendLine($"EXIT FOUND: ({map.ExitPosition!.Value.X},{map.ExitPosition!.Value.Y})");
+                    }
+                    
+                    try { Console.Clear(); } catch { }
+                    Console.WriteLine(sb.ToString());
 
-                var moveResult = await crawler.TryMoveAsync(bag);
-                if (moveResult is not Labyrinth.Crawl.MoveResult.Success)
-                {
-                    logger.LogWarning("Error moving to ({X},{Y}): {Result}", nextPos.X, nextPos.Y, moveResult);
-                    map.Update(facingPos.X, facingPos.Y, TileKnowledge.Wall);
+                    var currentCrawlers = session.Crawlers.ToList();
+                    var crawlerPositions = currentCrawlers.Select((c, idx) => 
+                        (c.X, c.Y, c.Direction.ToString() ?? "Unknown")).ToList();
+                    
+                    mapExporter.PrintMapWithColors(crawlerPositions, crawlerColors);
+                    
+                    await Task.Delay(10);
                 }
             }
 
-            logger.LogInformation("Exploration over. Final position: ({X},{Y}), Known cells: {Known}, Frontiers left: {Frontiers}", 
-                crawler.X, crawler.Y, map.KnownCount, map.GetFrontiers().Count());
+            Console.WriteLine("\n");
+            logger.LogInformation("════════════════════════════════════");
+            if (exitReached)
+            {
+                logger.LogInformation("EXIT REACHED!");
+            }
+            else
+            {
+                logger.LogWarning("EXIT NOT REACHED");
+            }
+            logger.LogInformation("════════════════════════════════════");
+            
+            var stats = mapExporter.GetStatistics();
+            logger.LogInformation("{Stats}", stats);
+            
+            var finalCrawlers = session.Crawlers.ToList();
+            for (int i = 0; i < finalCrawlers.Count; i++)
+            {
+                var crawler = finalCrawlers[i];
+                logger.LogInformation("Crawler {Id} final position: ({X},{Y}) facing {Direction}", 
+                    i, crawler.X, crawler.Y, crawler.Direction);
+            }
+            
+            logger.LogInformation("FINAL MAP");
+            var finalCrawlerPositions = finalCrawlers.Select((c, idx) => 
+                (c.X, c.Y, c.Direction.ToString() ?? "Unknown")).ToList();
+            var finalMap = mapExporter.ExportToAscii(finalCrawlerPositions);
+            logger.LogInformation("\n{Map}", finalMap);
 
             await session.Close();
-            return 0;
+            return exitReached ? 0 : 1;
         }
         catch (Exception ex)
         {
             logger.LogError(ex, "Error during exploration");
             return 1;
         }
-    }
-
-    static (int X, int Y) GetFacingPosition((int X, int Y) pos, Labyrinth.Crawl.Direction direction)
-    {
-        return (pos.X + direction.DeltaX, pos.Y + direction.DeltaY);
-    }
-
-    static TileKnowledge TileTypeToKnowledge(Type tileType)
-    {
-        if (tileType == typeof(Labyrinth.Tiles.Wall)) return TileKnowledge.Wall;
-        if (tileType == typeof(Labyrinth.Tiles.Room)) return TileKnowledge.Room;
-        if (tileType == typeof(Labyrinth.Tiles.Door)) return TileKnowledge.Door;
-        if (tileType == typeof(Labyrinth.Tiles.Outside)) return TileKnowledge.Outside;
-        return TileKnowledge.Unknown;
-    }
-
-    static Labyrinth.Crawl.Direction GetDirectionTo((int X, int Y) from, (int X, int Y) to)
-    {
-        var dx = to.X - from.X;
-        var dy = to.Y - from.Y;
-        
-        var direction = Labyrinth.Crawl.Direction.North;
-        
-        if (dx == 1) direction = Labyrinth.Crawl.Direction.East;
-        else if (dx == -1) direction = Labyrinth.Crawl.Direction.West;
-        else if (dy == 1) direction = Labyrinth.Crawl.Direction.South;
-        
-        return direction;
     }
 }

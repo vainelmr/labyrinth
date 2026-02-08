@@ -20,6 +20,11 @@ public class Explorer
     private readonly BFSPathfinder _pathfinder;
     private readonly ILogger _logger;
     private (int X, int Y)? _currentTarget;
+    private HashSet<(int X, int Y)> _impassableDoorsForMe = new();
+    private HashSet<(int X, int Y)> _unreachableRoomsForMe = new();
+    private int _stepCount = 0;
+
+    public (int X, int Y)? Target => _currentTarget;
 
     public Explorer(
         int id,
@@ -42,41 +47,188 @@ public class Explorer
     /// <summary>
     /// Executes a step of exploration.
     /// </summary>
-    /// <returns>True if the explorer should continue exploring, false if there are no more frontiers.</returns>
+    /// <returns>True if the explorer should continue exploring, false if exploration is finished or exit reached.</returns>
     public async Task<bool> StepAsync()
     {
+        _stepCount++;
+        
         var currentPos = (_crawler.X, _crawler.Y);
 
-        var facingTileType = await _crawler.GetFrontTileTypeAsync();
+        if (_crawler is ClientCrawler clientCrawler)
+        {
+            try 
+            {
+                var roomInventory = clientCrawler.CurrentTileInventory;
+                var roomItems = await roomInventory.GetItemTypesAsync();
+                
+                if (roomItems.Count > 0)
+                {                    
+                    var allTrue = roomItems.Select(_ => true).ToList();
+                    var collected = await _bag.TryMoveItemsFrom(roomInventory, allTrue);
+                    
+                    if (collected)
+                    {
+                        var newBagItems = await _bag.GetItemTypesAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Crawler {Id}: Failed to inspect/collect items on current tile", _id);
+            }
+        }
+
+
+        if (_map.Get(currentPos.X, currentPos.Y) == TileKnowledge.Unknown)
+        {
+            _map.Update(currentPos.X, currentPos.Y, TileKnowledge.Room);
+        }
+
+        var bagItemsTypes = await _bag.GetItemTypesAsync();
+        bool myHasKey = bagItemsTypes.Contains(typeof(Labyrinth.Items.Key));
+        int myBagCount = bagItemsTypes.Count;
+
+        if (_stepCount % 10 == 0)
+        {
+            await RecheckKnownDoorsAsync(currentPos);
+        }
+
+        if (myBagCount > 0 && _impassableDoorsForMe.Count > 0)
+        {
+            _impassableDoorsForMe.Clear();
+            _unreachableRoomsForMe.Clear();
+            _map.InvalidatePathCache();
+        }
+
         var facingPos = GetFacingPosition(currentPos, _crawler.Direction);
-        
-        _map.Update(facingPos.X, facingPos.Y, TileTypeToKnowledge(facingTileType));
-        _map.Update(currentPos.X, currentPos.Y, TileKnowledge.Room);
+        if (_map.Get(facingPos.X, facingPos.Y) == TileKnowledge.Unknown)
+        {
+            var isFacingExit = await _crawler.IsFacingExitAsync();
+            
+            if (isFacingExit)
+            {
+                _map.MarkExit(facingPos.X, facingPos.Y);
+                _map.Update(facingPos.X, facingPos.Y, TileKnowledge.Outside);
+                            }
+            else
+            {
+                var facingTileType = await _crawler.GetFrontTileTypeAsync();
+                _map.Update(facingPos.X, facingPos.Y, TileTypeToKnowledge(facingTileType));
+            }
+        }
 
         if (_currentTarget.HasValue && currentPos == _currentTarget.Value)
         {
             _coordinator.ReleaseFrontier(_currentTarget.Value);
             _currentTarget = null;
-            _logger.LogInformation("Crawler {Id}: Reached target ({X},{Y})", _id, currentPos.X, currentPos.Y);
         }
 
         if (!_currentTarget.HasValue)
         {
-            _currentTarget = _coordinator.AssignFrontier(_id, currentPos);
-            if (!_currentTarget.HasValue)
+            var ignoreList = new List<(int X, int Y)>();
+            while (true)
             {
-                _logger.LogInformation("Crawler {Id}: No more frontiers available", _id);
-                return false; // No more frontiers, exploration finished
+                _currentTarget = _coordinator.AssignFrontier(_id, currentPos, ignoreList);
+                if (!_currentTarget.HasValue)
+                {
+                    var knownRooms = _map.GetAllKnown()
+                        .Where(pos => _map.Get(pos.X, pos.Y) == TileKnowledge.Room)
+                        .Where(pos => pos != currentPos)
+                        .Where(pos => !ignoreList.Contains(pos))
+                        .Where(pos => !_unreachableRoomsForMe.Contains(pos))
+                        .ToList();
+                    
+                    if (knownRooms.Count > 0)
+                    {
+                        (int X, int Y)? bestRoom = null;
+                        int bestDistance = int.MaxValue;
+                        
+                        foreach (var room in knownRooms)
+                        {
+                            var testPath = _pathfinder.FindPath(currentPos, room, myHasKey, _impassableDoorsForMe);
+                            if (testPath != null && testPath.Count > 0)
+                            {
+                                int distance = Math.Abs(room.X - currentPos.X) + Math.Abs(room.Y - currentPos.Y);
+                                if (distance < bestDistance)
+                                {
+                                    bestDistance = distance;
+                                    bestRoom = room;
+                                }
+                            }
+                            else
+                            {
+                                ignoreList.Add(room);
+                            }
+                        }
+                        
+                        if (bestRoom.HasValue)
+                        {
+                            _currentTarget = bestRoom.Value;
+                            break;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+                    else
+                    {
+                        if (_map.ExitFound && _map.ExitPosition.HasValue && _map.GetFrontiers().Count() == 0)
+                        {
+                            _currentTarget = _map.ExitPosition;
+                            break;
+                        }
+                        else
+                        {
+                            return false;
+                        }
+                    }
+                }
+
+                if (!_map.IsFrontier(_currentTarget.Value.X, _currentTarget.Value.Y))
+                {
+                    _coordinator.ReleaseFrontier(_currentTarget.Value);
+                    _currentTarget = null;
+                    continue;
+                }
+
+                var checkPath = _pathfinder.FindPath(currentPos, _currentTarget.Value, myHasKey, _impassableDoorsForMe);
+                if (checkPath != null && checkPath.Count > 0)
+                {
+                    break;
+                }
+
+                _coordinator.ReleaseFrontier(_currentTarget.Value);
+                ignoreList.Add(_currentTarget.Value);
+                _currentTarget = null;
             }
         }
 
-        var path = _pathfinder.FindPath(currentPos, _currentTarget.Value);
+        if (_currentTarget.HasValue)
+        {
+            if (!_map.IsFrontier(_currentTarget.Value.X, _currentTarget.Value.Y) && 
+                _currentTarget != _map.ExitPosition)
+            {
+                _coordinator.ReleaseFrontier(_currentTarget.Value);
+                _currentTarget = null;
+                return true;
+            }
+        }
+
+        var path = _pathfinder.FindPath(currentPos, _currentTarget.Value, myHasKey, _impassableDoorsForMe);
         if (path == null || path.Count == 0)
         {
-            _logger.LogWarning("Crawler {Id}: No path to frontier ({X},{Y}), releasing", 
-                _id, _currentTarget.Value.X, _currentTarget.Value.Y);
-            _coordinator.ReleaseFrontier(_currentTarget.Value);
+            if (_map.Get(_currentTarget.Value.X, _currentTarget.Value.Y) == TileKnowledge.Room)
+            {
+                _unreachableRoomsForMe.Add(_currentTarget.Value);
+            }
+                        
+            if (!_map.ExitFound || _currentTarget != _map.ExitPosition)
+            {
+                _coordinator.ReleaseFrontier(_currentTarget.Value);
+            }
             _currentTarget = null;
+            
             return true;
         }
 
@@ -86,21 +238,67 @@ public class Explorer
         while (_crawler.Direction != targetDirection)
         {
             _crawler.Direction.TurnLeft();
-            _logger.LogDebug("Crawler {Id}: Turned to {Direction}", _id, _crawler.Direction);
         }
-
+        
         var moveResult = await _crawler.TryMoveAsync(_bag);
-        if (moveResult is MoveResult.Success)
-        {
-            _logger.LogDebug("Crawler {Id}: Moved to ({X},{Y})", _id, _crawler.X, _crawler.Y);
+        
+        bool actuallyMoved = _crawler.X != currentPos.X || _crawler.Y != currentPos.Y;
+
+        if (moveResult is MoveResult.Success success && actuallyMoved)
+        {            
+            var newPos = (_crawler.X, _crawler.Y);
+            if (_map.ExitFound && _map.ExitPosition.HasValue && newPos == _map.ExitPosition.Value &&
+                _map.GetFrontiers().Count() == 0)
+            {                
+                for (int i = 0; i < 4; i++)
+                {
+                    if (await _crawler.IsFacingExitAsync())
+                    {
+                        var exitResult = await _crawler.TryMoveAsync(_bag);
+                        if (exitResult is MoveResult.Success)
+                        {
+                            return false;
+                        }
+                        else
+                        {
+                            break;
+                        }
+                    }
+                    _crawler.Direction.TurnLeft();
+                }
+            }
+            
+            if (success.TileInventory is not null)
+            {
+                 var itemTypes = await success.TileInventory.GetItemTypesAsync();
+                if (itemTypes.Count > 0)
+                {                    
+                    var allTrue = itemTypes.Select(_ => true).ToList();
+                    var collected = await _bag.TryMoveItemsFrom(success.TileInventory, allTrue);
+                    
+                    if (collected)
+                    {
+                        var bagItems = await _bag.GetItemTypesAsync();
+                    }
+                    else
+                    {
+                        _logger.LogWarning("Crawler {Id}: Failed to collect items", _id);
+                    }
+                }
+            }
         }
         else
-        {
-            _logger.LogWarning("Crawler {Id}: Failed to move to ({X},{Y}): {Result}", 
-                _id, nextPos.X, nextPos.Y, moveResult);
-            _map.Update(facingPos.X, facingPos.Y, TileKnowledge.Wall);
+        {            
+            var obstacleTile = await _crawler.GetFrontTileTypeAsync();  
+            _map.Update(nextPos.X, nextPos.Y, TileTypeToKnowledge(obstacleTile));
             
-            if (_currentTarget.HasValue)
+            if (obstacleTile.Name == "Door")
+            {
+                _impassableDoorsForMe.Add(nextPos);
+                _map.InvalidatePathCache();
+            }
+
+            if (_currentTarget.HasValue && (!_map.ExitFound || _currentTarget != _map.ExitPosition))
             {
                 _coordinator.ReleaseFrontier(_currentTarget.Value);
                 _currentTarget = null;
@@ -133,5 +331,38 @@ public class Explorer
         if (dx == -1) return Direction.West;
         if (dy == 1) return Direction.South;
         return Direction.North;
+    }
+
+    /// <summary>
+    /// Re-check known doors to see if they've been opened (become rooms)
+    /// </summary>
+    private async Task RecheckKnownDoorsAsync((int X, int Y) currentPos)
+    {
+        var knownDoors = _map.GetAllKnown()
+            .Where(pos => _map.Get(pos.X, pos.Y) == TileKnowledge.Door)
+            .Where(pos => Math.Abs(pos.X - currentPos.X) + Math.Abs(pos.Y - currentPos.Y) == 1)
+            .ToList();
+
+        foreach (var doorPos in knownDoors)
+        {
+            var originalDir = _crawler.Direction;
+                        var targetDir = GetDirectionTo(currentPos, doorPos);
+            while (_crawler.Direction != targetDir)
+            {
+                _crawler.Direction.TurnLeft();
+            }
+            
+            var tileType = await _crawler.GetFrontTileTypeAsync();
+            if (tileType.Name == "Room")
+            {
+                _map.Update(doorPos.X, doorPos.Y, TileKnowledge.Room);
+                _map.InvalidatePathCache();
+            }
+            
+            while (_crawler.Direction != originalDir)
+            {
+                _crawler.Direction.TurnLeft();
+            }
+        }
     }
 }

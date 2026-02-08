@@ -12,6 +12,7 @@ public class Coordinator
     private readonly ILogger _logger;
     private readonly HashSet<(int X, int Y)> _assignedFrontiers = new();
     private readonly object _lock = new();
+    private bool _keyFound = false;
 
     public Coordinator(SharedMap map, ILogger logger)
     {
@@ -20,28 +21,59 @@ public class Coordinator
     }
 
     /// <summary>
+    /// Notifies that a key has been found. All crawlers can now attempt to pass through doors.
+    /// </summary>
+    public void NotifyKeyFound(int crawlerId)
+    {
+        lock (_lock)
+        {
+            if (!_keyFound)
+            {
+                _keyFound = true;                
+                _map.InvalidatePathCache();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Checks if a key has been found by the team.
+    /// </summary>
+    public bool IsKeyAvailable()
+    {
+        lock (_lock)
+        {
+            return _keyFound;
+        }
+    }
+
+    /// <summary>
     /// Assign a frontier to a crawler based on its current position. Returns null if no frontiers are available.
     /// </summary>
-    public (int X, int Y)? AssignFrontier(int crawlerId, (int X, int Y) currentPosition)
+    public (int X, int Y)? AssignFrontier(int crawlerId, (int X, int Y) currentPosition, IEnumerable<(int X, int Y)>? ignoreList = null)
     {
         lock (_lock)
         {
             var availableFrontiers = _map.GetFrontiers()
-                .Where(f => !_assignedFrontiers.Contains(f))
-                .ToList();
+                .Where(f => !_assignedFrontiers.Contains(f));
 
-            if (availableFrontiers.Count == 0)
+            if (ignoreList != null)
             {
-                _logger.LogDebug("Crawler {CrawlerId}: No available frontiers", crawlerId);
+                var ignoreSet = ignoreList.ToHashSet();
+                availableFrontiers = availableFrontiers.Where(f => !ignoreSet.Contains(f));
+            }
+
+            var availableList = availableFrontiers.ToList();
+
+            if (availableList.Count == 0)
+            {
                 return null;
             }
 
-            var closest = availableFrontiers
+            var closest = availableList
                 .OrderBy(f => Math.Abs(f.X - currentPosition.X) + Math.Abs(f.Y - currentPosition.Y))
                 .First();
 
             _assignedFrontiers.Add(closest);
-            _logger.LogDebug("Crawler {CrawlerId}: Assigned frontier ({X},{Y})", crawlerId, closest.X, closest.Y);
             return closest;
         }
     }
@@ -54,7 +86,6 @@ public class Coordinator
         lock (_lock)
         {
             _assignedFrontiers.Remove(frontier);
-            _logger.LogDebug("Released frontier ({X},{Y})", frontier.X, frontier.Y);
         }
     }
 

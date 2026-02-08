@@ -60,16 +60,16 @@ namespace Labyrinth.ApiClient
         /// </summary>
         public IBuilder Builder => _builder;
 
+        /// <summary>
+        /// Creates and adds a new crawler to the session
+        /// </summary>
         public async Task<ICrawler> NewCrawler()
         {
-            if(_callsToNewCrawler > 0)
-            {
-                _crawlers.Add(NewCrawlerAndItsBag(
-                    _appKey,
-                    await CreateCrawler(_http, _appKey)
-                ));
-            }
-            return _crawlers[_callsToNewCrawler++].Crawler;
+            var newCrawlerDto = await CreateCrawler(_http, _appKey);
+            var (crawler, bag) = NewCrawlerAndItsBag(_appKey, newCrawlerDto);
+            _crawlers.Add((crawler, bag));
+            
+            return crawler;
         }
 
         private ContestSession(HttpClient http, Guid appKey, Dto.Crawler crawler)
@@ -115,7 +115,6 @@ namespace Labyrinth.ApiClient
         private readonly Guid _appKey;
         private readonly RemoteContestLabyrinthBuilder _builder;
         private readonly IList<(ClientCrawler Crawler, Inventory Bag)> _crawlers;
-        private int _callsToNewCrawler = 0;
 
         private class RemoteContestLabyrinthBuilder : IBuilder
         {
